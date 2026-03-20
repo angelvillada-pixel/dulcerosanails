@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🌸 Dulce Rosa Nails Spa
 
 Página web profesional para **Dulce Rosa Nails Spa** — Barrio Castilla, Medellín.
@@ -58,3 +59,7 @@ git add .
 git commit -m "actualización"
 git push
 ```
+=======
+# dulcerosanails
+>>>>>>> d474fbf80cc34d547165c6e9532e54adfcf71e04
+"# paginaweb_dulcerosa" 
