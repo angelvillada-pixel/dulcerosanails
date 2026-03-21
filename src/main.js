@@ -253,6 +253,7 @@ window.enviarCita = async function(e) {
     if (slotSnap.exists() && (slotSnap.data().booked||[]).includes(hora)) {
       mostrarToast('Este horario acaba de ser tomado. Elige otro.',true);
       btn.textContent='✦ Solicitar cita ahora'; btn.disabled=false;
+    const waBtn2=document.getElementById('wa-confirm-btn');if(waBtn2)waBtn2.style.display='none';
       window.cargarSlots(); return;
     }
     await addDoc(collection(db,'citas'),{nombre,tel,servicio,fecha,hora,nota,creado:serverTimestamp()});
@@ -265,6 +266,10 @@ window.enviarCita = async function(e) {
     } catch{}
     mostrarToast('🌸 ¡Cita enviada! Te contactaremos para confirmar el abono.',false);
     btn.textContent='✅ ¡Cita solicitada!'; btn.style.background='linear-gradient(135deg,#4CAF50,#66BB6A)';
+    // Show WhatsApp confirmation button
+    const waMsg = encodeURIComponent(`Hola Dulce Rosa 💅\nQuiero confirmar mi cita:\n• Servicio: ${servicio.split('—')[0].trim()}\n• Fecha: ${fecha}\n• Hora: ${hora}\nNombre: ${nombre}\nTeléfono: ${tel}`);
+    const waBtn = document.getElementById('wa-confirm-btn');
+    if(waBtn){ waBtn.href=`https://wa.me/573245683032?text=${waMsg}`; waBtn.style.display='flex'; }
   } catch(err) {
     console.error('Error cita:',err);
     mostrarToast('❌ Error al enviar. Intenta de nuevo.',true);

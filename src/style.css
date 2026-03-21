@@ -365,3 +365,53 @@ footer{background:var(--dark);color:rgba(255,255,255,.55);padding:52px 80px 24px
   .service-card-img-wrap{height:210px}
 
 }
+
+/* ── PROMOCIONES ── */
+.promo-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:14px;
+  padding:24px 22px;position:relative;overflow:hidden;transition:transform .25s,box-shadow .25s}
+.promo-card:hover{transform:translateY(-5px);box-shadow:0 16px 40px rgba(0,0,0,.3)}
+.promo-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--rose),var(--gold))}
+.promo-badge{display:inline-block;background:var(--rose);color:#fff;font-size:.68rem;font-weight:700;
+  padding:3px 11px;border-radius:50px;margin-bottom:12px;letter-spacing:.05em}
+.promo-title{font-family:'Cormorant Garamond',serif;font-size:1.45rem;font-weight:600;color:#fff;margin-bottom:8px}
+.promo-desc{font-size:.83rem;color:rgba(255,255,255,.6);line-height:1.7;margin-bottom:16px}
+.promo-precio{margin-bottom:18px}
+.promo-antes{font-size:.9rem;color:rgba(255,255,255,.35);text-decoration:line-through;margin-right:10px}
+.promo-ahora{font-size:1.4rem;font-weight:700;color:var(--gold-light)}
+.promo-btn{width:100%;padding:11px;background:var(--rose);color:#fff;border:none;border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:.84rem;font-weight:500;cursor:pointer;transition:background .2s}
+.promo-btn:hover{background:var(--rose-light)}
+
+/* ── TESTIMONIOS ── */
+.testimonio-card{background:var(--blush-pale);border:1px solid rgba(196,99,126,.15);border-radius:14px;
+  padding:22px 20px;transition:transform .25s,box-shadow .25s}
+.testimonio-card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(155,58,90,.12)}
+.test-stars{color:#f59e0b;font-size:1.1rem;margin-bottom:10px;letter-spacing:2px}
+.test-text{font-size:.85rem;color:var(--dark);line-height:1.8;margin-bottom:16px;font-style:italic}
+.test-autor{display:flex;align-items:center;gap:10px}
+.test-avatar{width:38px;height:38px;border-radius:50%;background:var(--rose);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95rem;flex-shrink:0}
+.test-autor strong{display:block;font-size:.85rem;color:var(--dark)}
+.test-autor span{font-size:.72rem;color:var(--muted)}
+
+/* ── STICKY CTA MÓVIL ── */
+.mobile-cta-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:250;
+  background:var(--rose);padding:12px 18px;
+  box-shadow:0 -4px 20px rgba(155,58,90,.3)}
+.mobile-cta-bar button{width:100%;background:#fff;color:var(--rose);border:none;border-radius:8px;
+  padding:12px;font-family:'DM Sans',sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+
+/* ── URGENCY STRIP ── */
+.urgency-strip{background:linear-gradient(90deg,var(--rose),#d63384);color:#fff;
+  text-align:center;padding:9px;font-size:.78rem;font-weight:500;letter-spacing:.04em;
+  animation:urgencyPulse 3s ease-in-out infinite}
+@keyframes urgencyPulse{0%,100%{background:linear-gradient(90deg,var(--rose),#d63384)}
+  50%{background:linear-gradient(90deg,#d63384,var(--rose))}}
+
+@media(max-width:960px){
+  #promociones,#testimonios{padding:52px 18px !important}
+  .mobile-cta-bar{display:block}
+  body{padding-bottom:64px}
+}
