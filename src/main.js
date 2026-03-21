@@ -21,9 +21,11 @@ function renderServicios(serviciosData={}, preciosData={}) {
   const allKeys = [...SERVICIO_KEYS];
   customKeys.forEach(c => { if (!allKeys.find(k=>k.id===c.id)) allKeys.push(c); });
 
-  const cats = [...new Set(allKeys.map(s=>s.cat))];
+  // Filter out hidden services
+  const visibleKeys = allKeys.filter(s => !(serviciosData[s.id]?.hidden));
+  const cats = [...new Set(visibleKeys.map(s=>s.cat))];
   cont.innerHTML = cats.map((cat,ci) => {
-    const svcs = allKeys.filter(s=>s.cat===cat);
+    const svcs = visibleKeys.filter(s=>s.cat===cat);
     return `<div class="service-category reveal" style="transition-delay:${ci*.08}s">
       <div class="category-label">${cat}</div>
       <div class="services-grid">
@@ -161,7 +163,9 @@ function actualizarSelectServicios() {
   sel.innerHTML = '<option value="" disabled selected>Selecciona un servicio</option>';
   const customKeys = serviciosActuales._custom || [];
   const allKeys = [...SERVICIO_KEYS, ...customKeys.filter(c=>!SERVICIO_KEYS.find(k=>k.id===c.id))];
-  const cats = [...new Set(allKeys.map(s=>s.cat))];
+  // Filter out hidden services
+  const visibleKeys = allKeys.filter(s => !(serviciosData[s.id]?.hidden));
+  const cats = [...new Set(visibleKeys.map(s=>s.cat))];
   cats.forEach(cat => {
     const og = document.createElement('optgroup');
     og.label = cat.replace(/^[^\s]+ /,'');

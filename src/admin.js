@@ -138,7 +138,7 @@ function _renderSvcAdmin(cont, serviciosData) {
   const allKeys=[...SERVICIO_KEYS,...customKeys.filter(c=>!SERVICIO_KEYS.find(k=>k.id===c.id))];
   const cats=[...new Set(allKeys.map(s=>s.cat))];
   cats.forEach(cat=>{
-    const svcs=allKeys.filter(s=>s.cat===cat);
+    const svcs=allKeys.filter(s=>s.cat===cat && !(serviciosData[s.id]?.hidden));
     const catDiv=document.createElement('div');
     catDiv.innerHTML=`<div class="svc-cat-title">${cat}</div>`;
     svcs.forEach(s=>{
@@ -149,7 +149,7 @@ function _renderSvcAdmin(cont, serviciosData) {
       const card=document.createElement('div');
       card.className='svc-edit-card';
       card.innerHTML=`
-        ${isCustom?`<button class="btn-del-svc" onclick="eliminarServicioCustom('${s.id}')">✕ Eliminar</button>`:''}
+        <button class="btn-del-svc" onclick="eliminarServicio('${s.id}','${!!SERVICIO_KEYS.find(k=>k.id===s.id)}')">✕ Eliminar</button>
         <div class="svc-edit-card-header">
           <div class="svc-edit-img" id="svc-img-preview-${s.id}">
             ${imagen?`<img src="${imagen}" alt="${nombre}"/>`:`<span>${s.emoji||'💅'}</span>`}
@@ -245,6 +245,24 @@ window.guardarNuevoServicio=async function(){
   document.getElementById('ns-precio').value='';
   document.getElementById('ns-desc').value='';
   document.getElementById('ns-detalles').value='';
+  const cont=document.getElementById('svc-edit-list');
+  if(cont)_renderSvcAdmin(cont,newData);
+};
+
+window.eliminarServicio=async function(id, isBuiltin){
+  if(!confirm('¿Eliminar este servicio? '+( isBuiltin==='true'?'(Se ocultará de la página)':'')  )) return;
+  const snap=await getDoc(doc(db,'config','servicios'));
+  const existing=snap.exists()?snap.data():{};
+  const customKeys=(existing._custom||[]).filter(c=>c.id!==id);
+  const newData={...existing,_custom:customKeys};
+  if(isBuiltin==='true'){
+    // For built-in services, mark as hidden
+    newData[id]={...(existing[id]||{}), hidden:true};
+  } else {
+    delete newData[id];
+  }
+  await setDoc(doc(db,'config','servicios'),newData);
+  serviciosEnMemoria=newData;
   const cont=document.getElementById('svc-edit-list');
   if(cont)_renderSvcAdmin(cont,newData);
 };
