@@ -1,27 +1,26 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import {
-  getFirestore, initializeFirestore,
-  collection, doc, getDoc, setDoc, addDoc,
-  getDocs, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
-} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+// Wrapper sobre window.__db y window.__fb (inicializados en /firebase-init.js)
+// Espera a que Firebase esté listo antes de exportar
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBvHUMHCfhfpNWO7jJ0VGKd85GQ5B_LxGs",
-  authDomain: "dulce-rosa.firebaseapp.com",
-  projectId: "dulce-rosa",
-  storageBucket: "dulce-rosa.firebasestorage.app",
-  messagingSenderId: "40527565108",
-  appId: "1:40527565108:web:7ee0e93d1f9334bf969561"
-};
+function waitReady(fn) {
+  if (window.__db) return fn();
+  return new Promise(r => window.addEventListener('fb-ready', () => r(fn()), { once: true }));
+}
 
-const app = initializeApp(firebaseConfig);
-
-// experimentalForceLongPolling evita problemas de WebSocket/offline en entornos de producción
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true
+export function getDb() { return window.__db; }
+export const db = new Proxy({}, {
+  get(_, prop) { return window.__db?.[prop]; }
 });
 
-export {
-  collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc,
-  onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
-};
+// Re-exportar todas las funciones de Firestore
+export function collection(...a) { return window.__fb.collection(...a); }
+export function doc(...a) { return window.__fb.doc(...a); }
+export async function getDoc(...a) { return window.__fb.getDoc(...a); }
+export async function setDoc(...a) { return window.__fb.setDoc(...a); }
+export async function addDoc(...a) { return window.__fb.addDoc(...a); }
+export async function getDocs(...a) { return window.__fb.getDocs(...a); }
+export async function deleteDoc(...a) { return window.__fb.deleteDoc(...a); }
+export function onSnapshot(...a) { return window.__fb.onSnapshot(...a); }
+export async function updateDoc(...a) { return window.__fb.updateDoc(...a); }
+export function arrayUnion(...a) { return window.__fb.arrayUnion(...a); }
+export function arrayRemove(...a) { return window.__fb.arrayRemove(...a); }
+export function serverTimestamp() { return window.__fb.serverTimestamp(); }
