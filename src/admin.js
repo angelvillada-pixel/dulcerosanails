@@ -17,7 +17,11 @@ window.renderCitas = async function() {
   if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const snap = await getDocs(collection(db, 'citas'));
+    // Add timeout to avoid hanging forever
+    const snap = await Promise.race([
+      getDocs(collection(db, 'citas')),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+    ]);
     const citas = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
     document.getElementById('stat-total').textContent = citas.length;
@@ -41,7 +45,10 @@ window.renderCitas = async function() {
           ${c.nota ? `<div style="grid-column:span 2">📝 ${c.nota}</div>` : ''}
         </div>
       </div>`).join('');
-  } catch (e) { lista.innerHTML = '<div class="no-citas">Error cargando. Verifica conexión.</div>'; }
+  } catch (e) {
+    const msg = e?.message === 'timeout' ? 'La conexión tardó mucho. Toca 🔄 Actualizar.' : 'Error: ' + (e?.message || e);
+    lista.innerHTML = `<div class="no-citas">${msg}</div>`;
+  }
 };
 
 window.eliminarCita = async function(id, fecha, hora) {
@@ -164,7 +171,7 @@ window.cargarAdminServicios = async function() {
 window.subirImagenServicio = function(id, input) {
   const file = input.files[0];
   if (!file) return;
-  comprimirImagen(file, 300, 0.7).then(b64 => {
+  comprimirImagen(file, 80, 0.45).then(b64 => {  // tiny thumbnail to stay under Firestore 1MB limit
     window._svcImages[id] = b64;
     const prev = document.getElementById('svc-img-preview-' + id);
     if (prev) prev.innerHTML = `<img src="${b64}" alt="" style="width:44px;height:44px;border-radius:6px;object-fit:cover"/>`;

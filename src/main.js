@@ -54,8 +54,9 @@ onSnapshot(doc(db, 'config', 'site'), snap => {
   const d = snap.data();
   if (d.logo) document.querySelectorAll('.site-logo').forEach(el => el.src = d.logo);
   if (d.nequi) document.querySelectorAll('.nequi-num').forEach(el => el.textContent = d.nequi);
-  if (d.horarios?.length) {
-    window._horasDisponibles = d.horarios;
+  if (d.horarios) {
+    // Always update, even if empty array (means all blocked)
+    window._horasDisponibles = d.horarios.length ? d.horarios : [...HORAS_DEFAULT];
     // Regenerar slots si hay una fecha seleccionada
     const fecha = document.getElementById('inp-fecha')?.value;
     if (fecha) window.cargarSlots();
