@@ -1,5 +1,9 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+// Firebase via CDN — Vite pasa URLs https:// sin modificar
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {
+  getFirestore, collection, doc, getDoc, setDoc, addDoc,
+  getDocs, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvHUMHCfhfpNWO7jJ0VGKd85GQ5B_LxGs",
@@ -12,8 +16,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-
 export {
   collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc,
   onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
-} from 'firebase/firestore';
+};
