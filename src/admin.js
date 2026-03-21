@@ -133,13 +133,21 @@ window.guardarPrecios = async function() {
 
 // ── SERVICIOS (nombres + imágenes) ──
 window.cargarAdminServicios = async function() {
-  let serviciosData = {};
-  try {
-    const snap = await getDoc(doc(db, 'config', 'servicios'));
-    if (snap.exists()) serviciosData = snap.data();
-  } catch (e) {}
+  // Render immediately with defaults, no waiting
   const cont = document.getElementById('svc-edit-list');
   if (!cont) return;
+  cont.innerHTML = '';
+  let serviciosData = {};
+  // Render right away
+  _renderSvcList(cont, serviciosData);
+  // Then update from Firebase in background
+  try {
+    const snap = await getDoc(doc(db, 'config', 'servicios'));
+    if (snap.exists()) { serviciosData = snap.data(); _renderSvcList(cont, serviciosData); }
+  } catch (e) { console.warn('servicios load:', e); }
+};
+
+function _renderSvcList(cont, serviciosData) {
   cont.innerHTML = '';
   CATEGORIAS.forEach(cat => {
     const svcs = SERVICIO_KEYS.filter(s => s.cat === cat);
@@ -166,7 +174,7 @@ window.cargarAdminServicios = async function() {
     });
     cont.appendChild(catDiv);
   });
-};
+}
 
 window.subirImagenServicio = function(id, input) {
   const file = input.files[0];
