@@ -8,20 +8,20 @@ export const PRECIOS_DEFAULT = {
 };
 
 export const SERVICIO_KEYS = [
-  { id:'esmaltado_manos',  nombre:'Esmaltado Tradicional Manos', emoji:'🖐️', cat:'💅 Esmaltado' },
-  { id:'esmaltado_pies',   nombre:'Esmaltado Tradicional Pies',  emoji:'🦶', cat:'💅 Esmaltado' },
-  { id:'semi_hombres',     nombre:'Semipermanente Hombres',      emoji:'💜', cat:'💅 Esmaltado' },
-  { id:'semi_mujeres',     nombre:'Semipermanente Mujeres',      emoji:'🌸', cat:'💅 Esmaltado' },
-  { id:'press_on',         nombre:'Press On',                    emoji:'🎀', cat:'✨ Uñas' },
-  { id:'dipping',          nombre:'Dipping de Acrílico',         emoji:'💎', cat:'✨ Uñas' },
-  { id:'acrilicas',        nombre:'Acrílicas',                   emoji:'💅', cat:'✨ Uñas', desde:true },
-  { id:'poligel',          nombre:'Poligel',                     emoji:'🌟', cat:'✨ Uñas' },
-  { id:'ret_press_on',     nombre:'Retoque Press On',            emoji:'🎀', cat:'🔧 Retoques' },
-  { id:'ret_acrilicas',    nombre:'Retoque Acrílicas',           emoji:'💅', cat:'🔧 Retoques' },
-  { id:'ret_poligel',      nombre:'Retoque Poligel',             emoji:'🌟', cat:'🔧 Retoques' },
-  { id:'ret_semi',         nombre:'Retiro Semipermanente',       emoji:'🌸', cat:'🧹 Retiros' },
-  { id:'ret_press_on2',    nombre:'Retiro Press On',             emoji:'🎀', cat:'🧹 Retiros' },
-  { id:'ret_acrilicas2',   nombre:'Retiro Acrílicas',            emoji:'💅', cat:'🧹 Retiros' },
+  { id:'esmaltado_manos', nombre:'Esmaltado Tradicional Manos', emoji:'🖐️', cat:'💅 Esmaltado', descripcion:'Esmaltado con esmalte convencional en manos.', detalles:'Incluye limpieza de cutícula, hidratación y esmaltado en el color que elijas.' },
+  { id:'esmaltado_pies',  nombre:'Esmaltado Tradicional Pies',  emoji:'🦶', cat:'💅 Esmaltado', descripcion:'Esmaltado con esmalte convencional en pies.', detalles:'Incluye exfoliación, hidratación y esmaltado en el color que elijas.' },
+  { id:'semi_hombres',    nombre:'Semipermanente Hombres',      emoji:'💜', cat:'💅 Esmaltado', descripcion:'Semipermanente de larga duración para hombres.', detalles:'Duración 3-4 semanas. Incluye limpieza y esmaltado gel.' },
+  { id:'semi_mujeres',    nombre:'Semipermanente Mujeres',      emoji:'🌸', cat:'💅 Esmaltado', descripcion:'Semipermanente de larga duración para mujeres.', detalles:'Duración 3-4 semanas. Incluye limpieza de cutícula y esmaltado gel.' },
+  { id:'press_on',        nombre:'Press On',                    emoji:'🎀', cat:'✨ Uñas',      descripcion:'Uñas postizas personalizadas listas para poner.', detalles:'Diseño personalizado, larga duración. Incluye kit de aplicación.' },
+  { id:'dipping',         nombre:'Dipping de Acrílico',         emoji:'💎', cat:'✨ Uñas',      descripcion:'Técnica de polvo acrílico sin monómero líquido.', detalles:'Más resistente que el esmalte. No daña la uña natural. Duración 3-4 semanas.' },
+  { id:'acrilicas',       nombre:'Acrílicas',                   emoji:'💅', cat:'✨ Uñas',      descripcion:'Extensión de uñas en acrílico.', detalles:'Incluye diseño, forma y largo a tu elección. Precio desde $95.000 según diseño.', desde:true },
+  { id:'poligel',         nombre:'Poligel',                     emoji:'🌟', cat:'✨ Uñas',      descripcion:'Extensión con poligel, más liviana y flexible.', detalles:'Más liviana que el acrílico. Gran variedad de diseños. Duración 3-4 semanas.' },
+  { id:'ret_press_on',    nombre:'Retoque Press On',            emoji:'🎀', cat:'🔧 Retoques',  descripcion:'Retoque y mantenimiento de uñas Press On.', detalles:'Incluye limpieza y refuerzo de las uñas existentes.' },
+  { id:'ret_acrilicas',   nombre:'Retoque Acrílicas',           emoji:'💅', cat:'🔧 Retoques',  descripcion:'Retoque de crecimiento en uñas acrílicas.', detalles:'Se trabaja el área del crecimiento para que queden como nuevas.' },
+  { id:'ret_poligel',     nombre:'Retoque Poligel',             emoji:'🌟', cat:'🔧 Retoques',  descripcion:'Retoque de crecimiento en uñas de poligel.', detalles:'Mantenimiento completo del poligel existente.' },
+  { id:'ret_semi',        nombre:'Retiro Semipermanente',       emoji:'🌸', cat:'🧹 Retiros',   descripcion:'Retiro seguro del esmalte semipermanente.', detalles:'Proceso cuidadoso sin dañar la uña natural. Incluye hidratación.' },
+  { id:'ret_press_on2',   nombre:'Retiro Press On',             emoji:'🎀', cat:'🧹 Retiros',   descripcion:'Retiro seguro de uñas Press On.', detalles:'Sin dañar la uña natural. Incluye cuidado post-retiro.' },
+  { id:'ret_acrilicas2',  nombre:'Retiro Acrílicas',            emoji:'💅', cat:'🧹 Retiros',   descripcion:'Retiro seguro de uñas acrílicas.', detalles:'Proceso especializado para cuidar la uña natural.' },
 ];
 
 export const CATEGORIAS = ['💅 Esmaltado','✨ Uñas','🔧 Retoques','🧹 Retiros'];
