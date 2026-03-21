@@ -8,252 +8,107 @@
   <link rel="stylesheet" href="/src/style.css"/>
 </head>
 <body>
-<!-- ══ NAV ══ -->
+
+<!-- NAV -->
 <nav id="navbar">
-  <div class="nav-logo">
-    <img src="" class="site-logo" alt="Logo" class="site-logo"/>
+  <div class="nav-logo" onclick="window.scrollTo({behavior:'smooth',top:0})">
+    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="site-logo" alt="Logo"/>
     <div class="nav-brand">Dulce <span>Rosa</span> Nails Spa</div>
   </div>
   <ul class="nav-links">
     <li><a href="#inicio">Inicio</a></li>
-    <li><a href="#galeria">Galería</a></li>
     <li><a href="#servicios">Servicios</a></li>
-    <li><a href="#cita">Cita</a></li>
     <li><a href="#ubicacion">Ubicación</a></li>
   </ul>
-  <button class="nav-cta" onclick="document.getElementById('cita').scrollIntoView({behavior:'smooth'})">Agendar cita</button>
+  <div class="nav-actions">
+    <button class="btn-nav-ghost" onclick="abrirOverlay('overlay-galeria')">🖼 Ver trabajos</button>
+    <button class="btn-nav-primary" onclick="abrirOverlay('overlay-cita')">Agendar cita</button>
+  </div>
 </nav>
 
-<!-- ══ HERO ══ -->
+<!-- HERO -->
 <section id="inicio">
   <div class="hero-text">
     <div class="hero-eyebrow">Nails Spa · Castilla, Medellín</div>
     <h1 class="hero-title">El cuidado que<br>tus manos <em>merecen</em><br><strong>lo encontrás aquí</strong></h1>
     <p class="hero-desc">En Dulce Rosa Nails Spa mimamos tus manos y pies con técnicas profesionales, productos de calidad y un ambiente pensado para que te sientas como reina.</p>
     <div class="hero-btns">
-      <a href="#cita" class="btn-primary">Agendar mi cita</a>
-      <a href="#galeria" class="btn-ghost">Ver trabajos</a>
+      <button class="btn-primary" onclick="abrirOverlay('overlay-cita')">Agendar mi cita</button>
+      <button class="btn-ghost" onclick="abrirOverlay('overlay-galeria')">Ver trabajos</button>
     </div>
   </div>
   <div class="hero-visual">
-    <div class="logo-display"><img src="" class="site-logo" alt="Dulce Rosa Nails Spa" class="site-logo"/></div>
+    <div class="logo-display"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="site-logo" alt="Dulce Rosa"/></div>
     <div class="chip chip-1"><span class="chip-dot" style="background:#4CAF50"></span>Atendiendo hoy</div>
     <div class="chip chip-2">💎 Gel · Acrílicas · Poligel</div>
     <div class="chip chip-3">📍 Barrio Castilla</div>
   </div>
 </section>
 
-<!-- ══ GALERÍA / CATÁLOGO ══ -->
-<section id="galeria">
-  <div class="galeria-header">
-    <p class="section-tag">Nuestros trabajos</p>
-    <h2 class="section-title">El arte de <em>nuestras uñas</em></h2>
-    <div class="section-divider"></div>
-  </div>
-  <div class="galeria-slider">
-    <div class="galeria-track" id="galeria-track">
-      <div class="galeria-vacia">🌸 Cargando galería...</div>
-    </div>
-  </div>
-  <div class="galeria-controls">
-    <button class="galeria-btn" onclick="prevSlide()">‹</button>
-    <div class="galeria-nav" id="galeria-dots"></div>
-    <button class="galeria-btn" onclick="nextSlide()">›</button>
-  </div>
-</section>
-
-<!-- ══ AVISO ══ -->
+<!-- AVISO -->
 <div class="aviso-banner">
-  <div class="aviso-icon">⚠️</div>
+  <div style="font-size:1.3rem;flex-shrink:0">⚠️</div>
   <div class="aviso-text">
-    <strong>¡Aviso importante!</strong> Se requiere un <strong>abono previo de $10.000</strong> para asegurar tu cita.
+    <strong>¡Aviso importante!</strong> Se requiere un <strong>abono previo de $10.000</strong> para confirmar tu cita.
     Envíalo al Nequi: <strong class="nequi-num">324 568 3032</strong> — Sin abono la cita no queda confirmada.
   </div>
 </div>
 
-<!-- ══ SERVICIOS ══ -->
+<!-- SERVICIOS -->
 <section id="servicios">
-  <div class="section-header">
+  <div class="section-header reveal">
     <p class="section-tag">Lo que ofrecemos</p>
     <h2 class="section-title">Nuestros <em>servicios</em></h2>
     <div class="section-divider"></div>
   </div>
-  <div class="service-category">
-    <div class="category-label">💅 Esmaltado</div>
-    <div class="services-grid">
-      <div class="service-card"><div class="service-icon">🖐️</div><div class="service-name">Esmaltado Tradicional Manos</div><div class="service-price" id="pr-esmaltado-manos">$22.000</div></div>
-      <div class="service-card"><div class="service-icon">🦶</div><div class="service-name">Esmaltado Tradicional Pies</div><div class="service-price" id="pr-esmaltado-pies">$22.000</div></div>
-      <div class="service-card"><div class="service-icon">💜</div><div class="service-name">Semipermanente Hombres</div><div class="service-price" id="pr-semi-hombres">$25.000</div></div>
-      <div class="service-card"><div class="service-icon">🌸</div><div class="service-name">Semipermanente Mujeres</div><div class="service-price" id="pr-semi-mujeres">$38.000</div></div>
-    </div>
-  </div>
-  <div class="service-category">
-    <div class="category-label">✨ Uñas</div>
-    <div class="services-grid">
-      <div class="service-card"><div class="service-icon">🎀</div><div class="service-name">Press On</div><div class="service-price" id="pr-press-on">$75.000</div></div>
-      <div class="service-card"><div class="service-icon">💎</div><div class="service-name">Dipping de Acrílico</div><div class="service-price" id="pr-dipping">$65.000</div></div>
-      <div class="service-card"><div class="service-icon">💅</div><div class="service-name">Acrílicas</div><div class="service-price"><span class="price-from">Desde </span><span id="pr-acrilicas">$95.000</span></div></div>
-      <div class="service-card"><div class="service-icon">🌟</div><div class="service-name">Poligel</div><div class="service-price" id="pr-poligel">$85.000</div></div>
-    </div>
-  </div>
-  <div class="service-category">
-    <div class="category-label">🔧 Retoques</div>
-    <div class="services-grid">
-      <div class="service-card"><div class="service-icon">🎀</div><div class="service-name">Retoque Press On</div><div class="service-price" id="pr-ret-press">$65.000</div></div>
-      <div class="service-card"><div class="service-icon">💅</div><div class="service-name">Retoque Acrílicas</div><div class="service-price" id="pr-ret-acrilicas">$80.000</div></div>
-      <div class="service-card"><div class="service-icon">🌟</div><div class="service-name">Retoque Poligel</div><div class="service-price" id="pr-ret-poligel">$65.000</div></div>
-    </div>
-  </div>
-  <div class="service-category">
-    <div class="category-label">🧹 Retiros</div>
-    <div class="services-grid">
-      <div class="service-card"><div class="service-icon">🌸</div><div class="service-name">Retiro Semipermanente</div><div class="service-price" id="pr-retiro-semi">$15.000</div></div>
-      <div class="service-card"><div class="service-icon">🎀</div><div class="service-name">Retiro Press On</div><div class="service-price" id="pr-retiro-press">$20.000</div></div>
-      <div class="service-card"><div class="service-icon">💅</div><div class="service-name">Retiro Acrílicas</div><div class="service-price" id="pr-retiro-acrilicas">$20.000</div></div>
-    </div>
-  </div>
+  <div id="servicios-container"></div>
 </section>
 
-<!-- ══ CITA ══ -->
-<section id="cita">
-  <div class="cita-layout">
-    <div class="cita-info">
-      <p class="section-tag">Reserva tu espacio</p>
-      <h2 class="section-title">Agenda tu <em>cita</em><br>en minutos</h2>
-      <div class="section-divider"></div>
-      <p class="cita-desc">Llena el formulario, selecciona un horario disponible y recibirás confirmación. Recuerda el abono de $10.000 al Nequi <span class="nequi-num">324 568 3032</span>.</p>
-      <div class="cita-features">
-        <div class="cita-feat"><div class="feat-icon">📅</div>Lunes a Sábado</div>
-        <div class="cita-feat"><div class="feat-icon">⏰</div>8:00 am – 7:00 pm</div>
-        <div class="cita-feat"><div class="feat-icon">🔒</div>Horarios bloqueados en tiempo real</div>
-        <div class="cita-feat"><div class="feat-icon">📧</div>Notificación automática al correo</div>
-        <div class="cita-feat"><div class="feat-icon">💰</div>Abono $10.000 — Nequi <span class="nequi-num">324 568 3032</span></div>
-      </div>
-    </div>
-    <div class="form-card">
-      <div class="form-title">✦ Formulario de cita</div>
-      <form id="citaForm" onsubmit="enviarCita(event)">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Nombre completo</label>
-            <input class="form-input" id="inp-nombre" type="text" placeholder="Tu nombre" required/>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Teléfono / WhatsApp</label>
-            <input class="form-input" id="inp-tel" type="tel" placeholder="3XX XXX XXXX" required/>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Servicio deseado</label>
-          <select class="form-select" id="inp-servicio" required>
-            <option value="" disabled selected>Selecciona un servicio</option>
-            <optgroup label="Esmaltado">
-              <option>Esmaltado Tradicional Manos — $22.000</option>
-              <option>Esmaltado Tradicional Pies — $22.000</option>
-              <option>Semipermanente Hombres — $25.000</option>
-              <option>Semipermanente Mujeres — $38.000</option>
-            </optgroup>
-            <optgroup label="Uñas">
-              <option>Press On — $75.000</option>
-              <option>Dipping de Acrílico — $65.000</option>
-              <option>Acrílicas — desde $95.000</option>
-              <option>Poligel — $85.000</option>
-            </optgroup>
-            <optgroup label="Retoques">
-              <option>Retoque Press On — $65.000</option>
-              <option>Retoque Acrílicas — $80.000</option>
-              <option>Retoque Poligel — $65.000</option>
-            </optgroup>
-            <optgroup label="Retiros">
-              <option>Retiro Semipermanente — $15.000</option>
-              <option>Retiro Press On — $20.000</option>
-              <option>Retiro Acrílicas — $20.000</option>
-            </optgroup>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Fecha de la cita</label>
-          <input class="form-input" id="inp-fecha" type="date" onchange="cargarSlots()" required/>
-        </div>
-        <div class="slots-container">
-          <label class="form-label">Selecciona tu horario</label>
-          <div class="slots-grid" id="slots-grid">
-            <div class="slots-placeholder">Selecciona primero una fecha 📅</div>
-          </div>
-          <div class="slots-legend">
-            <span><span class="legend-dot" style="background:var(--rose)"></span>Tu selección</span>
-            <span><span class="legend-dot" style="background:rgba(255,255,255,.07)"></span>Ocupado</span>
-            <span><span class="legend-dot" style="background:rgba(255,255,255,.18)"></span>Disponible</span>
-          </div>
-          <input type="hidden" id="inp-hora" required/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Comentarios o diseño en mente</label>
-          <textarea class="form-textarea" id="inp-nota" placeholder="Color, referencia, diseño..."></textarea>
-        </div>
-        <button type="submit" class="btn-submit" id="btn-submit">✦ Solicitar cita ahora</button>
-        <div class="toast" id="toast"></div>
-      </form>
-    </div>
-  </div>
-</section>
-
-<!-- ══ UBICACIÓN ══ -->
+<!-- UBICACIÓN -->
 <section id="ubicacion">
-  <div class="location-info">
+  <div class="location-info reveal-left">
     <p class="section-tag">Dónde encontrarnos</p>
     <h2 class="section-title">Solo en <em>Castilla</em>,<br>Medellín</h2>
     <div class="section-divider"></div>
-    <p class="location-desc">Estamos en el corazón del barrio Castilla. ¡Te esperamos!</p>
+    <p class="location-desc">Estamos en el corazón del barrio Castilla. ¡Te esperamos con todo el cariño!</p>
     <div class="contact-list">
-      <div class="contact-item">
-        <div class="contact-icon-box">📍</div>
-        <div class="contact-detail"><strong>Dirección</strong><span>Cr 72A #98-77, Barrio Castilla — Medellín</span></div>
-      </div>
-      <div class="contact-item">
-        <div class="contact-icon-box">📞</div>
-        <div class="contact-detail"><strong>Teléfono / WhatsApp</strong><a href="https://wa.me/573245683032" target="_blank"><span class="nequi-num">324 568 3032</span></a></div>
-      </div>
-      <div class="contact-item">
-        <div class="contact-icon-box">🕐</div>
-        <div class="contact-detail"><strong>Horario</strong><span>Lunes a Sábado: 8:00 am – 7:00 pm</span></div>
-      </div>
-      <div class="contact-item">
-        <div class="contact-icon-box">💰</div>
-        <div class="contact-detail"><strong>Nequi (abono cita)</strong><span><span class="nequi-num">324 568 3032</span> — $10.000 pesos</span></div>
-      </div>
+      <div class="contact-item"><div class="contact-icon-box">📍</div>
+        <div class="contact-detail"><strong>Dirección</strong><span>Cr 72A #98-77, Barrio Castilla — Medellín</span></div></div>
+      <div class="contact-item"><div class="contact-icon-box">📞</div>
+        <div class="contact-detail"><strong>WhatsApp</strong><a href="https://wa.me/573245683032"><span class="nequi-num">324 568 3032</span></a></div></div>
+      <div class="contact-item"><div class="contact-icon-box">🕐</div>
+        <div class="contact-detail"><strong>Horario</strong><span>Lunes a Sábado: 8:00 am – 7:00 pm</span></div></div>
+      <div class="contact-item"><div class="contact-icon-box">💰</div>
+        <div class="contact-detail"><strong>Nequi (abono)</strong><span><span class="nequi-num">324 568 3032</span> — $10.000</span></div></div>
     </div>
   </div>
-  <div class="map-box">
+  <div class="map-box reveal-right">
     <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.3!2d-75.612!3d6.289!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e44283e27898f4f%3A0x8e97e2f9df1ce850!2sCr.+72a+%2398-77%2C+Castilla%2C+Medell%C3%ADn!5e0!3m2!1ses!2sco!4v1" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     <div class="map-badge">📍 Cr 72A #98-77, Castilla</div>
   </div>
 </section>
 
-<!-- ══ FOOTER ══ -->
+<!-- FOOTER -->
 <footer>
   <div class="footer-top">
     <div>
       <div class="footer-brand">Dulce <span>Rosa</span> Nails Spa</div>
       <p class="footer-tagline">Belleza, cuidado y amor en cada uña.<br>Tu spa de confianza en Castilla, Medellín.</p>
-      <div class="horario-badge"><span class="badge-dot"></span> Abierto hoy · 8am – 7pm</div>
+      <div class="horario-badge"><span class="badge-dot"></span>Abierto hoy · 8am – 7pm</div>
     </div>
-    <div class="footer-col">
-      <h4>Servicios</h4>
+    <div class="footer-col"><h4>Acceso rápido</h4>
       <ul>
-        <li><a href="#servicios">Esmaltado Tradicional</a></li>
-        <li><a href="#servicios">Semipermanente</a></li>
-        <li><a href="#servicios">Press On &amp; Acrílicas</a></li>
-        <li><a href="#servicios">Poligel &amp; Dipping</a></li>
-        <li><a href="#servicios">Retoques &amp; Retiros</a></li>
+        <li><a href="#inicio">Inicio</a></li>
+        <li><a href="#servicios">Servicios</a></li>
+        <li><a href="#ubicacion">Ubicación</a></li>
+        <li><a href="javascript:void(0)" onclick="abrirOverlay('overlay-galeria')">Galería</a></li>
+        <li><a href="javascript:void(0)" onclick="abrirOverlay('overlay-cita')">Agendar cita</a></li>
       </ul>
     </div>
-    <div class="footer-col">
-      <h4>Contacto</h4>
+    <div class="footer-col"><h4>Contacto</h4>
       <ul>
-        <li><a href="https://wa.me/573245683032" target="_blank">📲 <span class="nequi-num">324 568 3032</span></a></li>
+        <li><a href="https://wa.me/573245683032">📲 <span class="nequi-num">324 568 3032</span></a></li>
         <li>📍 Cr 72A #98-77, Castilla</li>
-        <li style="margin-top:9px"><a href="#cita">→ Agendar cita</a></li>
       </ul>
     </div>
   </div>
@@ -263,11 +118,105 @@
   </div>
 </footer>
 
+<!-- ═══ OVERLAY GALERÍA ═══ -->
+<div id="overlay-galeria" class="overlay" style="padding:0">
+  <div style="width:100%;height:100%;display:flex;flex-direction:column;overflow-y:auto;background:var(--dark)">
+    <div class="galeria-overlay-header">
+      <h2>El arte de <em>nuestras uñas</em></h2>
+      <button class="btn-cerrar" onclick="cerrarOverlay('overlay-galeria')">✕</button>
+    </div>
+    <div class="galeria-overlay-body">
+      <div id="galeria-grid-pub" class="galeria-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ LIGHTBOX ═══ -->
+<div id="lightbox">
+  <button class="lb-close" onclick="cerrarLightbox()">✕</button>
+  <img id="lb-img" src="" alt=""/>
+</div>
+
+<!-- ═══ OVERLAY CITA ═══ -->
+<div id="overlay-cita" class="overlay">
+  <div class="cita-overlay-inner">
+    <div class="cita-overlay-header">
+      <h2>Agenda tu <em>cita</em></h2>
+      <button class="btn-cerrar" onclick="cerrarOverlay('overlay-cita')">✕</button>
+    </div>
+    <div class="cita-layout">
+      <div class="cita-info">
+        <p class="cita-info-tag">Reserva tu espacio</p>
+        <h3 class="cita-info-title">En <em>minutos</em>,<br>lista para lucir</h3>
+        <div class="cita-divider"></div>
+        <p class="cita-desc">Selecciona tu servicio y horario. Recuerda el abono de <strong style="color:var(--gold-light)">$10.000</strong> al Nequi <span class="nequi-num" style="color:var(--gold-light)">324 568 3032</span>.</p>
+        <div class="cita-feats">
+          <div class="cita-feat"><div class="feat-icon">📅</div>Lunes a Sábado</div>
+          <div class="cita-feat"><div class="feat-icon">⏰</div>8:00 am – 7:00 pm</div>
+          <div class="cita-feat"><div class="feat-icon">🔒</div>Horarios en tiempo real</div>
+          <div class="cita-feat"><div class="feat-icon">📧</div>Notificación automática</div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-title">✦ Formulario de cita</div>
+        <form id="citaForm" onsubmit="enviarCita(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Nombre completo</label>
+              <input class="form-input" id="inp-nombre" type="text" placeholder="Tu nombre" required/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono / WhatsApp</label>
+              <input class="form-input" id="inp-tel" type="tel" placeholder="3XX XXX XXXX" required/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Servicio deseado</label>
+            <select class="form-select" id="inp-servicio" required>
+              <option value="" disabled selected>Selecciona un servicio</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de la cita</label>
+            <input class="form-input" id="inp-fecha" type="date" onchange="cargarSlots()" required/>
+          </div>
+          <div class="slots-container">
+            <label class="form-label">Selecciona tu horario</label>
+            <div class="slots-grid" id="slots-grid">
+              <div class="slots-ph">Selecciona primero una fecha 📅</div>
+            </div>
+            <div class="slots-legend">
+              <span><span class="legend-dot" style="background:var(--rose)"></span>Tu selección</span>
+              <span><span class="legend-dot" style="background:rgba(255,255,255,.05)"></span>Ocupado</span>
+              <span><span class="legend-dot" style="background:rgba(255,255,255,.16)"></span>Disponible</span>
+            </div>
+            <input type="hidden" id="inp-hora"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Comentarios o diseño en mente</label>
+            <textarea class="form-textarea" id="inp-nota" placeholder="Color, referencia, diseño..."></textarea>
+          </div>
+          <button type="submit" class="btn-submit" id="btn-submit">✦ Solicitar cita ahora</button>
+          <div class="toast" id="toast"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WHATSAPP -->
+<a href="https://wa.me/573245683032" class="whatsapp-fab" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+  </svg>
+</a>
+
+<!-- ADMIN TOGGLE -->
 <button id="admin-toggle" onclick="abrirLogin()">🔐 Admin</button>
 
-<!-- ══ MODAL LOGIN ══ -->
+<!-- ═══ MODAL LOGIN ═══ -->
 <div class="overlay" id="overlay-login">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="max-width:420px">
     <button class="modal-close" onclick="cerrarOverlay('overlay-login')">&times;</button>
     <div class="modal-title">🔐 Acceso Admin</div>
     <div class="modal-sub">Exclusivo para Dulce Rosa Nails Spa</div>
@@ -276,118 +225,108 @@
     <div class="a-field"><label class="a-label">Contraseña</label>
       <input class="a-input" id="auth-pass" type="password" placeholder="Contraseña"/></div>
     <div class="auth-error" id="auth-error">❌ Credenciales incorrectas.</div>
-    <button class="btn-save" onclick="verificarCredenciales()" style="margin-top:14px;width:100%">Ingresar</button>
+    <button class="btn-save" onclick="verificarCredenciales()" style="margin-top:13px;width:100%">Ingresar</button>
   </div>
 </div>
 
-<!-- ══ MODAL ADMIN ══ -->
+<!-- ═══ MODAL ADMIN ═══ -->
 <div class="overlay" id="overlay-admin">
   <div class="modal">
     <button class="modal-close" onclick="cerrarOverlay('overlay-admin')">&times;</button>
     <div class="modal-title">⚙️ Panel Admin</div>
     <div class="modal-sub">Dulce Rosa Nails Spa — Edición en tiempo real</div>
-
     <div class="admin-tabs">
       <button class="tab-btn active" data-tab="citas" onclick="switchTab('citas')">📋 Citas</button>
       <button class="tab-btn" data-tab="precios" onclick="switchTab('precios');cargarAdminPrecios()">💰 Precios</button>
+      <button class="tab-btn" data-tab="servicios" onclick="switchTab('servicios');cargarAdminServicios()">✏️ Servicios</button>
       <button class="tab-btn" data-tab="config" onclick="switchTab('config');cargarAdminConfig()">⚙️ Config</button>
       <button class="tab-btn" data-tab="logo" onclick="switchTab('logo')">🖼️ Logo</button>
       <button class="tab-btn" data-tab="galeria" onclick="switchTab('galeria')">📷 Galería</button>
     </div>
 
-    <!-- TAB CITAS -->
+    <!-- CITAS -->
     <div class="tab-pane active" id="tab-citas">
       <div class="admin-stats">
-        <div class="stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total citas</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total</div></div>
         <div class="stat-card"><div class="stat-num" id="stat-hoy">0</div><div class="stat-label">Hoy</div></div>
         <div class="stat-card"><div class="stat-num" id="stat-prox">0</div><div class="stat-label">Próximas</div></div>
       </div>
-      <div class="filter-bar">
-        <input class="filter-input" id="filtro-citas" type="text" placeholder="Buscar por nombre, servicio, fecha..." oninput="renderCitas()"/>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div class="filter-bar"><input class="filter-input" id="filtro-citas" type="text" placeholder="Buscar por nombre, servicio, fecha..." oninput="renderCitas()"/></div>
+      <div style="display:flex;gap:7px;margin-bottom:11px">
         <button class="btn-export" onclick="renderCitas()">🔄 Actualizar</button>
         <button class="btn-export" onclick="exportarCitas()">📥 Exportar</button>
       </div>
       <div id="lista-citas"></div>
     </div>
 
-    <!-- TAB PRECIOS -->
+    <!-- PRECIOS -->
     <div class="tab-pane" id="tab-precios">
-      <p style="color:rgba(255,255,255,.4);font-size:.78rem;margin-bottom:14px">Los cambios se reflejan en la página al instante ✨</p>
-      <div class="a-row">
-        <div class="a-field"><label class="a-label">Esmaltado Manos</label><input class="a-input" id="ap-esmaltado_manos" type="number"/></div>
-        <div class="a-field"><label class="a-label">Esmaltado Pies</label><input class="a-input" id="ap-esmaltado_pies" type="number"/></div>
-        <div class="a-field"><label class="a-label">Semi Hombres</label><input class="a-input" id="ap-semi_hombres" type="number"/></div>
-        <div class="a-field"><label class="a-label">Semi Mujeres</label><input class="a-input" id="ap-semi_mujeres" type="number"/></div>
-        <div class="a-field"><label class="a-label">Press On</label><input class="a-input" id="ap-press_on" type="number"/></div>
-        <div class="a-field"><label class="a-label">Dipping Acrílico</label><input class="a-input" id="ap-dipping" type="number"/></div>
-        <div class="a-field"><label class="a-label">Acrílicas (desde)</label><input class="a-input" id="ap-acrilicas" type="number"/></div>
-        <div class="a-field"><label class="a-label">Poligel</label><input class="a-input" id="ap-poligel" type="number"/></div>
-        <div class="a-field"><label class="a-label">Ret. Press On</label><input class="a-input" id="ap-ret_press_on" type="number"/></div>
-        <div class="a-field"><label class="a-label">Ret. Acrílicas</label><input class="a-input" id="ap-ret_acrilicas" type="number"/></div>
-        <div class="a-field"><label class="a-label">Ret. Poligel</label><input class="a-input" id="ap-ret_poligel" type="number"/></div>
-        <div class="a-field"><label class="a-label">Retiro Semi</label><input class="a-input" id="ap-ret_semi" type="number"/></div>
-        <div class="a-field"><label class="a-label">Retiro Press On</label><input class="a-input" id="ap-ret_press_on2" type="number"/></div>
-        <div class="a-field"><label class="a-label">Retiro Acrílicas</label><input class="a-input" id="ap-ret_acrilicas2" type="number"/></div>
-      </div>
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">Los cambios se reflejan al instante en la página ✨</p>
+      <div class="a-row"><div class="a-field"><label class="a-label">Esmaltado Manos</label><input class="a-input" id="ap-esmaltado_manos" type="number" min="0"/></div><div class="a-field"><label class="a-label">Esmaltado Pies</label><input class="a-input" id="ap-esmaltado_pies" type="number" min="0"/></div><div class="a-field"><label class="a-label">Semi Hombres</label><input class="a-input" id="ap-semi_hombres" type="number" min="0"/></div><div class="a-field"><label class="a-label">Semi Mujeres</label><input class="a-input" id="ap-semi_mujeres" type="number" min="0"/></div><div class="a-field"><label class="a-label">Press On</label><input class="a-input" id="ap-press_on" type="number" min="0"/></div><div class="a-field"><label class="a-label">Dipping Acrílico</label><input class="a-input" id="ap-dipping" type="number" min="0"/></div><div class="a-field"><label class="a-label">Acrílicas (desde)</label><input class="a-input" id="ap-acrilicas" type="number" min="0"/></div><div class="a-field"><label class="a-label">Poligel</label><input class="a-input" id="ap-poligel" type="number" min="0"/></div><div class="a-field"><label class="a-label">Ret. Press On</label><input class="a-input" id="ap-ret_press_on" type="number" min="0"/></div><div class="a-field"><label class="a-label">Ret. Acrílicas</label><input class="a-input" id="ap-ret_acrilicas" type="number" min="0"/></div><div class="a-field"><label class="a-label">Ret. Poligel</label><input class="a-input" id="ap-ret_poligel" type="number" min="0"/></div><div class="a-field"><label class="a-label">Retiro Semi</label><input class="a-input" id="ap-ret_semi" type="number" min="0"/></div><div class="a-field"><label class="a-label">Retiro Press On</label><input class="a-input" id="ap-ret_press_on2" type="number" min="0"/></div><div class="a-field"><label class="a-label">Retiro Acrílicas</label><input class="a-input" id="ap-ret_acrilicas2" type="number" min="0"/></div></div>
       <button class="btn-save" onclick="guardarPrecios()">💾 Guardar precios</button>
       <span class="save-ok" id="ok-precios">✅ ¡Guardado!</span>
     </div>
 
-    <!-- TAB CONFIG -->
+    <!-- SERVICIOS (nombres + imágenes) -->
+    <div class="tab-pane" id="tab-servicios">
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:4px">Edita el nombre e imagen de cada servicio. La imagen aparece encima de la línea decorativa.</p>
+      <p style="color:rgba(255,255,255,.25);font-size:.72rem;margin-bottom:12px">📷 Solo tú puedes cambiar esto desde aquí.</p>
+      <div id="svc-edit-list"></div>
+      <button class="btn-save" onclick="guardarServicios()" style="margin-top:10px">💾 Guardar nombres e imágenes</button>
+      <span class="save-ok" id="ok-servicios">✅ ¡Guardado!</span>
+    </div>
+
+    <!-- CONFIG -->
     <div class="tab-pane" id="tab-config">
-      <p style="color:rgba(255,255,255,.4);font-size:.78rem;margin-bottom:14px">✅ Verde = hora disponible &nbsp;|&nbsp; ❌ Tachado = hora bloqueada. Toca para activar/desactivar.</p>
-      <div class="a-field">
-        <label class="a-label">Número Nequi (aparece en toda la página)</label>
-        <input class="a-input" id="a-nequi" type="text" placeholder="324 568 3032"/>
-      </div>
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">✅ Verde = hora disponible &nbsp;|&nbsp; ❌ Tachado = bloqueada. Toca para activar/desactivar.</p>
+      <div class="a-field"><label class="a-label">Número Nequi (aparece en toda la página)</label>
+        <input class="a-input" id="a-nequi" type="text" placeholder="324 568 3032"/></div>
       <div class="a-field">
         <label class="a-label">Horarios disponibles para citas</label>
-        <div class="horarios-grid">
-          <label class="hora-chip" data-hora="8:00" onclick="toggleHora(this)"><input type="checkbox"/>8:00</label><label class="hora-chip" data-hora="9:00" onclick="toggleHora(this)"><input type="checkbox"/>9:00</label><label class="hora-chip" data-hora="10:00" onclick="toggleHora(this)"><input type="checkbox"/>10:00</label><label class="hora-chip" data-hora="11:00" onclick="toggleHora(this)"><input type="checkbox"/>11:00</label><label class="hora-chip" data-hora="12:00" onclick="toggleHora(this)"><input type="checkbox"/>12:00</label><label class="hora-chip" data-hora="13:00" onclick="toggleHora(this)"><input type="checkbox"/>13:00</label><label class="hora-chip" data-hora="14:00" onclick="toggleHora(this)"><input type="checkbox"/>14:00</label><label class="hora-chip" data-hora="15:00" onclick="toggleHora(this)"><input type="checkbox"/>15:00</label><label class="hora-chip" data-hora="16:00" onclick="toggleHora(this)"><input type="checkbox"/>16:00</label><label class="hora-chip" data-hora="17:00" onclick="toggleHora(this)"><input type="checkbox"/>17:00</label><label class="hora-chip" data-hora="18:00" onclick="toggleHora(this)"><input type="checkbox"/>18:00</label><label class="hora-chip" data-hora="19:00" onclick="toggleHora(this)"><input type="checkbox"/>19:00</label>
-        </div>
+        <div class="horarios-grid"><label class="hora-chip activa" data-hora="8:00" onclick="toggleHora(this)"><input type="checkbox"/>8:00</label><label class="hora-chip activa" data-hora="9:00" onclick="toggleHora(this)"><input type="checkbox"/>9:00</label><label class="hora-chip activa" data-hora="10:00" onclick="toggleHora(this)"><input type="checkbox"/>10:00</label><label class="hora-chip activa" data-hora="11:00" onclick="toggleHora(this)"><input type="checkbox"/>11:00</label><label class="hora-chip activa" data-hora="12:00" onclick="toggleHora(this)"><input type="checkbox"/>12:00</label><label class="hora-chip activa" data-hora="13:00" onclick="toggleHora(this)"><input type="checkbox"/>13:00</label><label class="hora-chip activa" data-hora="14:00" onclick="toggleHora(this)"><input type="checkbox"/>14:00</label><label class="hora-chip activa" data-hora="15:00" onclick="toggleHora(this)"><input type="checkbox"/>15:00</label><label class="hora-chip activa" data-hora="16:00" onclick="toggleHora(this)"><input type="checkbox"/>16:00</label><label class="hora-chip activa" data-hora="17:00" onclick="toggleHora(this)"><input type="checkbox"/>17:00</label><label class="hora-chip activa" data-hora="18:00" onclick="toggleHora(this)"><input type="checkbox"/>18:00</label><label class="hora-chip activa" data-hora="19:00" onclick="toggleHora(this)"><input type="checkbox"/>19:00</label></div>
       </div>
       <button class="btn-save" onclick="guardarConfig()">💾 Guardar configuración</button>
       <span class="save-ok" id="ok-config">✅ ¡Guardado!</span>
     </div>
 
-    <!-- TAB LOGO -->
+    <!-- LOGO -->
     <div class="tab-pane" id="tab-logo">
-      <p style="color:rgba(255,255,255,.4);font-size:.78rem;margin-bottom:16px">Sube una imagen para reemplazar el logo en toda la página.</p>
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:14px">Sube una imagen para reemplazar el logo en toda la página.</p>
       <div class="logo-preview-wrap">
-        <img id="preview-logo-admin" src="" class="site-logo" alt="Logo actual"/>
-        <span style="color:rgba(255,255,255,.5);font-size:.8rem">Logo actual</span>
+        <img id="preview-logo-admin" src="" alt="Logo actual"/>
+        <span style="color:rgba(255,255,255,.4);font-size:.78rem">Logo actual</span>
       </div>
       <label class="upload-area">
         📷 Toca para seleccionar imagen
         <input type="file" accept="image/*" onchange="previsualizarLogo(this)"/>
       </label>
       <br/>
-      <button class="btn-save" id="btn-guardar-logo" onclick="guardarLogo(this)" style="display:none;margin-top:12px">💾 Guardar logo</button>
+      <button class="btn-save" id="btn-guardar-logo" onclick="guardarLogo(this)" style="display:none;margin-top:11px">💾 Guardar logo</button>
       <span class="save-ok" id="ok-logo">✅ ¡Logo actualizado!</span>
     </div>
 
-    <!-- TAB GALERÍA -->
+    <!-- GALERÍA -->
     <div class="tab-pane" id="tab-galeria">
-      <p style="color:rgba(255,255,255,.4);font-size:.78rem;margin-bottom:14px">Las fotos se muestran en el catálogo de la página principal.</p>
-      <div class="a-row" style="margin-bottom:10px">
-        <div class="a-field">
-          <label class="a-label">Título de la foto (opcional)</label>
-          <input class="a-input" id="foto-titulo" type="text" placeholder="Ej: Diseño navideño"/>
-        </div>
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">Las fotos se muestran en la sección "Ver trabajos".</p>
+      <div class="foto-titulo-wrap a-field">
+        <label class="a-label">Título de la foto</label>
+        <input class="foto-titulo-fancy" id="foto-titulo" type="text" placeholder="Ej: ✨ Diseño primaveral con detalles dorados..."/>
       </div>
-      <label class="upload-area">
+      <label class="upload-area" style="margin-bottom:9px">
         📷 Seleccionar foto para subir
-        <input type="file" accept="image/*" onchange="subirFoto(this)"/>
+        <input type="file" id="foto-file-input" accept="image/*" onchange="seleccionarFoto(this)"/>
       </label>
-      <span class="save-ok" id="ok-galeria" style="display:block;margin-top:8px">✅ ¡Foto subida!</span>
-      <p style="color:rgba(255,255,255,.4);font-size:.75rem;margin:14px 0 8px">Fotos actuales (toca ✕ para eliminar):</p>
+      <div id="foto-preview-pending" style="display:none"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <button class="btn-save" id="btn-guardar-foto" onclick="guardarFoto()" style="display:none">💾 Guardar foto</button>
+        <span class="save-ok" id="ok-galeria">✅ ¡Foto guardada!</span>
+      </div>
+      <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin:13px 0 7px">Fotos actuales (toca ✕ para eliminar):</p>
       <div class="galeria-admin-grid" id="galeria-admin-grid"></div>
     </div>
-
   </div>
 </div>
-  <script type="module" src="/src/main.js"></script>
+
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

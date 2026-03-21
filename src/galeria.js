@@ -1,56 +1,23 @@
-let gSlide = 0, gFotos = [], gTimer = null;
-
+// Renderiza la galería pública en el overlay con grid (no slider)
 export function renderGaleriaPublica(fotos) {
-  gFotos = fotos;
-  gSlide = 0;
-  const track = document.getElementById('galeria-track');
-  const dots  = document.getElementById('galeria-dots');
-  if (!track) return;
-  clearInterval(gTimer);
-
+  const grid = document.getElementById('galeria-grid-pub');
+  if (!grid) return;
   if (!fotos.length) {
-    track.innerHTML = '<div class="galeria-vacia">🌸 Próximamente fotos de nuestros trabajos</div>';
-    if (dots) dots.innerHTML = '';
+    grid.innerHTML = '<div class="galeria-empty">🌸 Próximamente fotos de nuestros trabajos</div>';
     return;
   }
-
-  track.innerHTML = fotos.map(f => `
-    <div class="galeria-card">
+  grid.innerHTML = fotos.map(f => `
+    <div class="galeria-grid-card" onclick="abrirLightbox('${f.url.replace(/'/g,"\\'")}')">
       <img src="${f.url}" alt="${f.titulo || 'Trabajo'}" loading="lazy"/>
-      ${f.titulo ? `<div class="galeria-label">${f.titulo}</div>` : ''}
+      ${f.titulo ? `<div class="g-label">${f.titulo}</div>` : ''}
     </div>`).join('');
-
-  const porVista = () => window.innerWidth < 600 ? 1 : window.innerWidth < 960 ? 2 : 3;
-
-  if (dots) {
-    const total = Math.max(1, fotos.length - porVista() + 1);
-    dots.innerHTML = Array.from({ length: total }, (_, i) =>
-      `<button class="galeria-dot${i === 0 ? ' active' : ''}" onclick="irSlide(${i})"></button>`).join('');
-  }
-
-  gTimer = setInterval(() => {
-    const max = Math.max(0, gFotos.length - porVista());
-    gSlide = gSlide >= max ? 0 : gSlide + 1;
-    moverSlide(gSlide);
-  }, 3500);
 }
 
-function moverSlide(n) {
-  const track = document.getElementById('galeria-track');
-  if (!track) return;
-  const card = track.querySelector('.galeria-card');
-  if (!card) return;
-  const w = card.offsetWidth + 16;
-  track.style.transform = `translateX(-${n * w}px)`;
-  document.querySelectorAll('.galeria-dot').forEach((d, i) => d.classList.toggle('active', i === n));
-}
-
-window.irSlide   = (n) => { gSlide = n; moverSlide(n); };
-window.prevSlide = () => {
-  const pv = window.innerWidth < 600 ? 1 : window.innerWidth < 960 ? 2 : 3;
-  gSlide = Math.max(0, gSlide - 1); moverSlide(gSlide);
+window.abrirLightbox = function(src) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lb-img').src = src;
+  lb.classList.add('show');
 };
-window.nextSlide = () => {
-  const pv = window.innerWidth < 600 ? 1 : window.innerWidth < 960 ? 2 : 3;
-  gSlide = Math.min(Math.max(0, gFotos.length - pv), gSlide + 1); moverSlide(gSlide);
+window.cerrarLightbox = function() {
+  document.getElementById('lightbox').classList.remove('show');
 };

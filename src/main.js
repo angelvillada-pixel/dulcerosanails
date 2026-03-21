@@ -1,35 +1,79 @@
 import { LOGO } from './assets/logo.js';
 import { db, collection, doc, getDoc, setDoc, addDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
-import { HORAS_DEFAULT, PRECIOS_DEFAULT, PRECIO_IDS, fechaHoyColombia, formatCOP } from './data.js';
+import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen } from './data.js';
 import { renderGaleriaPublica } from './galeria.js';
-import { renderGaleriaAdmin } from './admin.js';
+import { renderGaleriaAdmin, showOk } from './admin.js';
 import './admin.js';
 
-// ── Estado global ──
+// ── ESTADO GLOBAL ──
 window._horasDisponibles = [...HORAS_DEFAULT];
 let horaSeleccionada = null;
 let unsubSlots = null;
 
-// ── Cargar logo ──
+// ── LOGO ──
 document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
+document.getElementById('preview-logo-admin').src = LOGO;
 
-// ── Listeners en tiempo real ──
+// ── RENDER SERVICIOS ──
+function renderServicios(serviciosData = {}, preciosData = {}) {
+  const cont = document.getElementById('servicios-container');
+  if (!cont) return;
+  const cats = [...new Set(SERVICIO_KEYS.map(s => s.cat))];
+  cont.innerHTML = cats.map((cat, ci) => {
+    const svcs = SERVICIO_KEYS.filter(s => s.cat === cat);
+    return `<div class="service-category reveal" style="transition-delay:${ci * 0.08}s">
+      <div class="category-label">${cat}</div>
+      <div class="services-grid">
+        ${svcs.map((s, si) => {
+          const info = serviciosData[s.id] || {};
+          const nombre = info.nombre || s.nombre;
+          const imagen = info.imagen || null;
+          const precio = preciosData[s.id] || PRECIOS_DEFAULT[s.id];
+          return `<div class="service-card reveal" style="transition-delay:${(ci * 4 + si) * 0.05}s">
+            <div class="service-img-zone">
+              ${imagen
+                ? `<img class="svc-img" src="${imagen}" alt="${nombre}"/>`
+                : `<span class="svc-emoji">${s.emoji}</span>`}
+            </div>
+            <div class="service-name" id="sn-${s.id}">${nombre}</div>
+            <div class="service-price">${s.desde ? '<span class="price-from">Desde </span>' : ''}${formatCOP(precio)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  initReveal();
+}
+
+// ── LISTENERS TIEMPO REAL ──
+let preciosActuales = { ...PRECIOS_DEFAULT };
+let serviciosActuales = {};
+
 onSnapshot(doc(db, 'config', 'site'), snap => {
   if (!snap.exists()) return;
   const d = snap.data();
-  if (d.logo)    document.querySelectorAll('.site-logo').forEach(el => el.src = d.logo);
-  if (d.nequi)   document.querySelectorAll('.nequi-num').forEach(el => el.textContent = d.nequi);
-  if (d.horarios?.length) window._horasDisponibles = d.horarios;
+  if (d.logo) document.querySelectorAll('.site-logo').forEach(el => el.src = d.logo);
+  if (d.nequi) document.querySelectorAll('.nequi-num').forEach(el => el.textContent = d.nequi);
+  if (d.horarios?.length) {
+    window._horasDisponibles = d.horarios;
+    // Regenerar slots si hay una fecha seleccionada
+    const fecha = document.getElementById('inp-fecha')?.value;
+    if (fecha) window.cargarSlots();
+  }
 });
 
 onSnapshot(doc(db, 'config', 'precios'), snap => {
   if (!snap.exists()) return;
-  const p = snap.data();
-  Object.entries(PRECIO_IDS).forEach(([elId, key]) => {
-    const el = document.getElementById(elId);
-    if (el && p[key]) el.textContent = formatCOP(p[key]);
-  });
-  actualizarSelectPrecios(p);
+  preciosActuales = { ...PRECIOS_DEFAULT, ...snap.data() };
+  renderServicios(serviciosActuales, preciosActuales);
+  actualizarSelectServicios();
+});
+
+onSnapshot(doc(db, 'config', 'servicios'), snap => {
+  if (!snap.exists()) return;
+  serviciosActuales = snap.data();
+  renderServicios(serviciosActuales, preciosActuales);
+  actualizarSelectServicios();
 });
 
 onSnapshot(collection(db, 'galeria'), snap => {
@@ -39,35 +83,24 @@ onSnapshot(collection(db, 'galeria'), snap => {
   renderGaleriaAdmin(fotos);
 });
 
-function actualizarSelectPrecios(p) {
-  const items = [
-    ['Esmaltado Tradicional Manos', p.esmaltado_manos],
-    ['Esmaltado Tradicional Pies',  p.esmaltado_pies],
-    ['Semipermanente Hombres',      p.semi_hombres],
-    ['Semipermanente Mujeres',      p.semi_mujeres],
-    ['Press On',                    p.press_on],
-    ['Dipping de Acrílico',         p.dipping],
-    ['Acrílicas',                   p.acrilicas],
-    ['Poligel',                     p.poligel],
-    ['Retoque Press On',            p.ret_press_on],
-    ['Retoque Acrílicas',           p.ret_acrilicas],
-    ['Retoque Poligel',             p.ret_poligel],
-    ['Retiro Semipermanente',       p.ret_semi],
-    ['Retiro Press On',             p.ret_press_on2],
-    ['Retiro Acrílicas',            p.ret_acrilicas2]
-  ];
+// Render inicial
+renderServicios({}, PRECIOS_DEFAULT);
+
+function actualizarSelectServicios() {
   const sel = document.getElementById('inp-servicio');
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="" disabled selected>Selecciona un servicio</option>';
-  const grupos = { 'Esmaltado': [0,1,2,3], 'Uñas': [4,5,6,7], 'Retoques': [8,9,10], 'Retiros': [11,12,13] };
-  Object.entries(grupos).forEach(([g, idxs]) => {
+  const cats = [...new Set(SERVICIO_KEYS.map(s => s.cat))];
+  cats.forEach(cat => {
     const og = document.createElement('optgroup');
-    og.label = g;
-    idxs.forEach(i => {
+    og.label = cat.replace(/^[^\s]+ /, '');
+    SERVICIO_KEYS.filter(s => s.cat === cat).forEach(s => {
+      const info = serviciosActuales[s.id] || {};
+      const nombre = info.nombre || s.nombre;
+      const precio = preciosActuales[s.id] || PRECIOS_DEFAULT[s.id];
       const o = document.createElement('option');
-      const v = items[i][1];
-      o.textContent = items[i][0] + (v ? ' — ' + formatCOP(v) : '');
+      o.textContent = `${nombre} — ${formatCOP(precio)}`;
       o.value = o.textContent;
       og.appendChild(o);
     });
@@ -76,7 +109,17 @@ function actualizarSelectPrecios(p) {
   if (cur) sel.value = cur;
 }
 
-// ── Slots ──
+// ── OVERLAYS ──
+window.abrirOverlay = function(id) {
+  document.getElementById(id).classList.add('show');
+  document.body.style.overflow = 'hidden';
+};
+window.cerrarOverlay = function(id) {
+  document.getElementById(id).classList.remove('show');
+  document.body.style.overflow = '';
+};
+
+// ── SLOTS ──
 window.cargarSlots = async function() {
   const fecha = document.getElementById('inp-fecha').value;
   if (!fecha) return;
@@ -84,7 +127,7 @@ window.cargarSlots = async function() {
   document.getElementById('inp-hora').value = '';
   if (unsubSlots) { unsubSlots(); unsubSlots = null; }
   document.getElementById('slots-grid').innerHTML =
-    '<div class="slots-loading"><span class="spin">⏳</span> Cargando...</div>';
+    '<div class="slots-loading"><span class="spin">⏳</span> Cargando horarios...</div>';
   unsubSlots = onSnapshot(doc(db, 'slots', fecha), snap => {
     const booked = snap.exists() ? (snap.data().booked || []) : [];
     renderSlots(booked);
@@ -93,14 +136,19 @@ window.cargarSlots = async function() {
 
 function renderSlots(booked) {
   const grid = document.getElementById('slots-grid');
+  const horas = window._horasDisponibles || HORAS_DEFAULT;
+  if (!horas.length) {
+    grid.innerHTML = '<div class="slots-ph">No hay horarios disponibles configurados.</div>';
+    return;
+  }
   grid.innerHTML = '';
-  window._horasDisponibles.forEach(h => {
-    const ok = booked.includes(h);
+  horas.forEach(h => {
+    const taken = booked.includes(h);
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'slot-btn' + (ok ? ' taken' : '');
+    b.className = 'slot-btn' + (taken ? ' taken' : '');
     b.textContent = h;
-    if (!ok) b.onclick = () => selSlot(h, b);
+    if (!taken) b.onclick = () => selSlot(h, b);
     grid.appendChild(b);
   });
 }
@@ -112,68 +160,77 @@ function selSlot(h, el) {
   document.getElementById('inp-hora').value = h;
 }
 
-// ── Enviar cita ──
+// ── ENVIAR CITA ──
 window.enviarCita = async function(e) {
   e.preventDefault();
   const hora = document.getElementById('inp-hora').value;
-  if (!hora) { alert('Por favor selecciona un horario.'); return; }
+  if (!hora) { mostrarToast('Por favor selecciona un horario disponible.', true); return; }
   const fecha    = document.getElementById('inp-fecha').value;
   const nombre   = document.getElementById('inp-nombre').value.trim();
   const tel      = document.getElementById('inp-tel').value.trim();
   const servicio = document.getElementById('inp-servicio').value;
   const nota     = document.getElementById('inp-nota').value.trim();
-  const booked   = await getDoc(doc(db, 'slots', fecha));
-  if (booked.exists() && (booked.data().booked || []).includes(hora)) {
-    alert('Este horario acaba de ser reservado. Elige otro.'); window.cargarSlots(); return;
-  }
+
   const btn = document.getElementById('btn-submit');
   btn.textContent = '⏳ Enviando...'; btn.disabled = true;
+
   try {
+    // Verificar que el slot sigue libre
+    const slotSnap = await getDoc(doc(db, 'slots', fecha));
+    if (slotSnap.exists() && (slotSnap.data().booked || []).includes(hora)) {
+      mostrarToast('Este horario acaba de ser tomado. Elige otro.', true);
+      btn.textContent = '✦ Solicitar cita ahora'; btn.disabled = false;
+      window.cargarSlots(); return;
+    }
+    // Bloquear slot
     const ref = doc(db, 'slots', fecha);
     const s = await getDoc(ref);
     if (s.exists()) await updateDoc(ref, { booked: arrayUnion(hora) });
     else await setDoc(ref, { booked: [hora] });
+    // Guardar cita
     await addDoc(collection(db, 'citas'), { nombre, tel, servicio, fecha, hora, nota, creado: serverTimestamp() });
-    await fetch('https://formsubmit.co/ajax/anacjimenez79@gmail.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        _subject: '💅 Nueva cita — Dulce Rosa Nails Spa',
-        Nombre: nombre, Teléfono: tel, Servicio: servicio,
-        Fecha: fecha, Hora: hora, Nota: nota || 'Sin comentarios', _template: 'table'
-      })
-    });
-    const toast = document.getElementById('toast');
-    toast.classList.remove('toast-error');
-    toast.textContent = '🌸 ¡Cita enviada! Te contactaremos para confirmar y recibir el abono.';
-    toast.classList.add('show');
+    // Email
+    try {
+      await fetch('https://formsubmit.co/ajax/anacjimenez79@gmail.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ _subject: '💅 Nueva cita — Dulce Rosa Nails Spa',
+          Nombre: nombre, Teléfono: tel, Servicio: servicio, Fecha: fecha, Hora: hora,
+          Nota: nota || 'Sin comentarios', _template: 'table' })
+      });
+    } catch {}
+    mostrarToast('🌸 ¡Cita enviada! Te contactaremos para confirmar y recibir el abono.', false);
     btn.textContent = '✅ ¡Cita solicitada!';
     btn.style.background = 'linear-gradient(135deg,#4CAF50,#66BB6A)';
   } catch (err) {
+    console.error('Error cita:', err);
+    mostrarToast('❌ Error al enviar. Verifica tu conexión e intenta de nuevo.', true);
     btn.textContent = '✦ Solicitar cita ahora'; btn.disabled = false;
-    const toast = document.getElementById('toast');
-    toast.classList.add('show', 'toast-error');
-    toast.textContent = '❌ Error al enviar. Inténtalo de nuevo.';
   }
 };
 
-// ── Admin Auth ──
+function mostrarToast(msg, esError) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast show' + (esError ? ' toast-error' : '');
+  setTimeout(() => toast.classList.remove('show'), 5000);
+}
+
+// ── AUTH ADMIN ──
 const AU = 'DulceRosa28', AP = 'luciana28';
 
 window.abrirLogin = function() {
   document.getElementById('auth-user').value = '';
   document.getElementById('auth-pass').value = '';
   document.getElementById('auth-error').classList.remove('show');
-  document.getElementById('overlay-login').classList.add('show');
+  abrirOverlay('overlay-login');
 };
-
-window.cerrarOverlay = function(id) { document.getElementById(id).classList.remove('show'); };
 
 window.verificarCredenciales = function() {
   if (document.getElementById('auth-user').value === AU &&
       document.getElementById('auth-pass').value === AP) {
-    window.cerrarOverlay('overlay-login');
-    document.getElementById('overlay-admin').classList.add('show');
+    cerrarOverlay('overlay-login');
+    abrirOverlay('overlay-admin');
     window.switchTab('citas');
     window.renderCitas().catch(console.error);
     window.cargarAdminConfig().catch(console.error);
@@ -183,28 +240,53 @@ window.verificarCredenciales = function() {
   }
 };
 
-// ── Init DOM ──
+// ── REVEAL ANIMATIONS ──
+function initReveal() {
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+  }, { threshold: 0, rootMargin: '0px 0px -30px 0px' });
+  document.querySelectorAll('.reveal, .reveal-left, .reveal-right').forEach(el => {
+    // Elementos ya en viewport: hacerlos visibles inmediatamente
+    const r = el.getBoundingClientRect();
+    if (r.top < window.innerHeight && r.bottom >= 0) {
+      el.classList.add('visible');
+    } else {
+      obs.observe(el);
+    }
+  });
+}
+
+// ── INIT ──
 document.addEventListener('DOMContentLoaded', () => {
-  // Fecha mínima en hora colombiana
-  const fi = document.querySelector('input[type="date"]');
+  // Fecha mínima colombiana
+  const fi = document.getElementById('inp-fecha');
   if (fi) fi.min = fechaHoyColombia();
 
+  // Scroll nav
+  window.addEventListener('scroll', () =>
+    document.getElementById('navbar').classList.toggle('scrolled', scrollY > 40));
+
+  // Enter en login
   document.getElementById('auth-pass')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') window.verificarCredenciales();
   });
 
-  window.addEventListener('scroll', () =>
-    document.getElementById('navbar').classList.toggle('scrolled', scrollY > 40));
+  // Cerrar overlays al click en fondo
+  document.querySelectorAll('.overlay').forEach(o =>
+    o.addEventListener('click', e => { if (e.target === o) cerrarOverlay(o.id); }));
 
-  const obs = new IntersectionObserver(entries => entries.forEach(e => {
-    if (e.isIntersecting) { e.target.style.opacity = '1'; e.target.style.transform = 'translateY(0)'; }
-  }), { threshold: 0.1 });
-
-  document.querySelectorAll('.service-card').forEach(el => {
-    el.style.cssText = 'opacity:0;transform:translateY(22px);transition:opacity .5s ease,transform .5s ease';
-    obs.observe(el);
+  // ESC cierra overlays
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.overlay.show').forEach(o => cerrarOverlay(o.id));
   });
 
-  document.querySelectorAll('.overlay').forEach(o =>
-    o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); }));
+  // Lightbox cierra al click fondo
+  document.getElementById('lightbox')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('lightbox') || e.target.tagName !== 'IMG') window.cerrarLightbox();
+  });
+
+  // Init animations (delay ensures layout is computed)
+  initReveal();
+  setTimeout(initReveal, 200);
+  actualizarSelectServicios();
 });
