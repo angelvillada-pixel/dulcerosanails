@@ -2,7 +2,9 @@
 // ║  FIRESTORE REST API — sin SDK, sin errores  ║
 // ╚══════════════════════════════════════════════╝
 const PROJECT = 'dulce-rosa';
+const API_KEY = 'AIzaSyBvHUMHCfhfpNWO7jJ0VGKd85GQ5B_LxGs';
 const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+const Q = `?key=${API_KEY}`;
 
 // ── Sentinels ──
 export function serverTimestamp() { return { _t: 'ts' }; }
@@ -70,14 +72,14 @@ function makeDocSnap(restDoc, fallbackId) {
 
 // ── CRUD ──
 export async function getDoc(ref) {
-  const r = await fetch(`${BASE}/${ref.path}`);
+  const r = await fetch(`${BASE}/${ref.path}${Q}`);
   if (r.status === 404) return makeDocSnap(null, ref.path.split('/').pop());
   const j = await r.json();
   return makeDocSnap(j);
 }
 
 export async function setDoc(ref, data) {
-  await fetch(`${BASE}/${ref.path}`, {
+  await fetch(`${BASE}/${ref.path}${Q}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields: toF(data) })
@@ -85,7 +87,7 @@ export async function setDoc(ref, data) {
 }
 
 export async function addDoc(colRef, data) {
-  const r = await fetch(`${BASE}/${colRef.path}`, {
+  const r = await fetch(`${BASE}/${colRef.path}${Q}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields: toF(data) })
@@ -96,14 +98,14 @@ export async function addDoc(colRef, data) {
 }
 
 export async function getDocs(colRef) {
-  const r = await fetch(`${BASE}/${colRef.path}`);
+  const r = await fetch(`${BASE}/${colRef.path}${Q}`);
   const j = await r.json();
   const docs = (j.documents || []).map(d => makeDocSnap(d));
   return { docs, empty: docs.length === 0 };
 }
 
 export async function deleteDoc(ref) {
-  await fetch(`${BASE}/${ref.path}`, { method: 'DELETE' });
+  await fetch(`${BASE}/${ref.path}${Q}`, { method: 'DELETE' });
 }
 
 export async function updateDoc(ref, data) {
@@ -150,7 +152,7 @@ export function onSnapshot(ref, callback) {
         last = sig;
         callback(snap);
       }
-    } catch (e) { console.warn('poll:', e); }
+    } catch (e) { console.warn('poll error:', e?.message || e); }
   }
 
   poll(); // inmediato
