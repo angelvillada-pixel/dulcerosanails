@@ -170,7 +170,7 @@ function _renderSvcAdmin(cont, serviciosData) {
 
 window.subirImagenServicio=function(id,input){
   const file=input.files[0]; if(!file)return;
-  comprimirImagen(file,300,0.7).then(b64=>{
+  comprimirImagen(file,600,0.88).then(b64=>{
     window._svcImages[id]=b64;
     const prev=document.getElementById('svc-img-preview-'+id);
     if(prev)prev.innerHTML=`<img src="${b64}" alt=""/>`;
@@ -213,7 +213,13 @@ window.guardarServicios=async function(){
 
 // ── NUEVO SERVICIO CUSTOM ──
 window.abrirFormNuevoServicio=function(){
-  abrirOverlay('overlay-nuevo-svc');
+  // Clear form first
+  ['ns-nombre','ns-precio','ns-desc','ns-detalles'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  const catEl=document.getElementById('ns-cat');
+  if(catEl) catEl.value='✨ Uñas';
+  window.abrirOverlay('overlay-nuevo-svc');
 };
 
 window.guardarNuevoServicio=async function(){
@@ -279,7 +285,7 @@ window.guardarLogo=async function(btn){
 window.seleccionarFoto=function(input){
   const file=input.files[0];if(!file)return;
   const titulo=document.getElementById('foto-titulo').value.trim();
-  comprimirImagen(file,380,0.62).then(b64=>{
+  comprimirImagen(file,600,0.82).then(b64=>{
     pendingFoto={b64,titulo};
     const prev=document.getElementById('foto-preview-pending');
     if(prev){
