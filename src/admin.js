@@ -20,7 +20,6 @@ window.switchTab = function(tab) {
 
 // ── CITAS ──
 window.renderCitas = async function() {
-  await waitForFirebase();
   const q = (document.getElementById('filtro-citas') || { value: '' }).value.toLowerCase();
   const lista = document.getElementById('lista-citas');
   if (!lista) return;
@@ -81,7 +80,6 @@ window.exportarCitas = async function() {
 
 // ── CONFIG ──
 window.cargarAdminConfig = async function() {
-  await waitForFirebase();
   const el = document.getElementById('a-nequi');
   if (el) el.value = '324 568 3032';
   document.querySelectorAll('.hora-chip').forEach(c => c.classList.add('activa'));
@@ -96,7 +94,6 @@ window.cargarAdminConfig = async function() {
 };
 
 window.guardarConfig = async function() {
-  await waitForFirebase();
   const btn = document.querySelector('#tab-config .btn-save');
   if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   const nequi = document.getElementById('a-nequi').value.trim();
@@ -133,7 +130,6 @@ window.cargarAdminPrecios = async function() {
 };
 
 window.guardarPrecios = async function() {
-  await waitForFirebase();
   const precios = {};
   Object.keys(PRECIOS_DEFAULT).forEach(k => {
     const el = document.getElementById('ap-' + k);
@@ -199,7 +195,6 @@ window.subirImagenServicio = function(id, input) {
 };
 
 window.guardarServicios = async function() {
-  await waitForFirebase();
   const btn = document.querySelector('#tab-servicios .btn-save');
   if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   try {
@@ -246,7 +241,6 @@ window.previsualizarLogo = function(input) {
 };
 
 window.guardarLogo = async function(btn) {
-  await waitForFirebase();
   const b64 = btn.dataset.b64;
   if (!b64) return;
   try {
@@ -294,7 +288,6 @@ window.cancelarFoto = function() {
 };
 
 window.guardarFoto = async function() {
-  await waitForFirebase();
   if (!pendingFoto) return;
   const btn = document.getElementById('btn-guardar-foto');
   btn.textContent = '⏳ Subiendo...'; btn.disabled = true;
