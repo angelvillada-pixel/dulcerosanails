@@ -213,13 +213,15 @@ window.guardarServicios=async function(){
 
 // ── NUEVO SERVICIO CUSTOM ──
 window.abrirFormNuevoServicio=function(){
-  // Clear form first
   ['ns-nombre','ns-precio','ns-desc','ns-detalles'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   const catEl=document.getElementById('ns-cat');
   if(catEl) catEl.value='✨ Uñas';
-  window.abrirOverlay('overlay-nuevo-svc');
+  // Direct DOM - no dependency on window.abrirOverlay
+  const overlay=document.getElementById('overlay-nuevo-svc');
+  if(overlay){ overlay.classList.add('show'); document.body.style.overflow='hidden'; }
+  else { console.error('overlay-nuevo-svc not found'); }
 };
 
 window.guardarNuevoServicio=async function(){
@@ -237,7 +239,8 @@ window.guardarNuevoServicio=async function(){
   const newData={...existing,_custom:customKeys,[id]:{nombre,precio,descripcion:desc,detalles,imagen:null,emoji:'💅',cat,desde:false}};
   await setDoc(doc(db,'config','servicios'),newData);
   serviciosEnMemoria=newData;
-  cerrarOverlay('overlay-nuevo-svc');
+  const ov=document.getElementById('overlay-nuevo-svc');
+  if(ov){ov.classList.remove('show');document.body.style.overflow='';}
   document.getElementById('ns-nombre').value='';
   document.getElementById('ns-precio').value='';
   document.getElementById('ns-desc').value='';

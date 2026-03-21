@@ -267,13 +267,14 @@
       <span class="save-ok" id="ok-precios">✅ ¡Guardado!</span>
     </div>
 
-    <!-- SERVICIOS (nombres + imágenes) -->
+    <!-- SERVICIOS CRUD -->
     <div class="tab-pane" id="tab-servicios">
-      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:4px">Edita el nombre e imagen de cada servicio. La imagen aparece encima de la línea decorativa.</p>
-      <p style="color:rgba(255,255,255,.25);font-size:.72rem;margin-bottom:12px">📷 Solo tú puedes cambiar esto desde aquí.</p>
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">Edita nombre, precio, descripción e imagen. Los cambios se reflejan al instante. 📷 Solo tú puedes cambiar esto.</p>
       <div id="svc-edit-list"></div>
-      <button class="btn-save" onclick="guardarServicios()" style="margin-top:10px">💾 Guardar nombres e imágenes</button>
-      <span class="save-ok" id="ok-servicios">✅ ¡Guardado!</span>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button class="btn-save" onclick="guardarServicios()">💾 Guardar cambios</button>
+        <span class="save-ok" id="ok-servicios">✅ ¡Guardado!</span>
+      </div>
     </div>
 
     <!-- CONFIG -->
@@ -328,6 +329,50 @@
 </div>
 
 <script type="module" src="/firebase-init.js"></script>
-  <script type="module" src="/src/main.js"></script>
+  
+<!-- ═══ OVERLAY DETALLES SERVICIO ═══ -->
+<div id="overlay-detalles" class="overlay">
+  <div class="detalles-modal">
+    <div style="position:relative">
+      <img id="det-img" src="" alt="" class="detalles-img"/>
+      <div id="det-emoji" class="detalles-img-placeholder">💅</div>
+      <button onclick="cerrarOverlay('overlay-detalles')" style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,.5);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:1.1rem;cursor:pointer">✕</button>
+    </div>
+    <div class="detalles-body">
+      <div class="detalles-cat" id="det-cat"></div>
+      <div class="detalles-nombre" id="det-nombre"></div>
+      <div class="detalles-precio" id="det-precio"></div>
+      <div class="detalles-desc" id="det-desc"></div>
+      <div class="detalles-info" id="det-detalles"></div>
+      <button class="detalles-agendar" id="det-nombre-btn" onclick="agendarDesdeDetalles()">Agendar cita</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ OVERLAY NUEVO SERVICIO ═══ -->
+<div id="overlay-nuevo-svc" class="overlay">
+  <div class="modal" style="max-width:500px">
+    <button class="modal-close" onclick="cerrarOverlay('overlay-nuevo-svc')">&times;</button>
+    <div class="modal-title">✨ Nuevo servicio</div>
+    <div class="modal-sub">Agrega un servicio personalizado</div>
+    <div class="a-row">
+      <div class="a-field"><label class="a-label">Nombre *</label><input class="a-input" id="ns-nombre" placeholder="Ej: Nail Art Especial"/></div>
+      <div class="a-field"><label class="a-label">Precio *</label><input class="a-input" type="number" id="ns-precio" placeholder="50000"/></div>
+    </div>
+    <div class="a-field"><label class="a-label">Categoría</label>
+      <select class="a-input" id="ns-cat">
+        <option value="💅 Esmaltado">💅 Esmaltado</option>
+        <option value="✨ Uñas" selected>✨ Uñas</option>
+        <option value="🔧 Retoques">🔧 Retoques</option>
+        <option value="🧹 Retiros">🧹 Retiros</option>
+      </select>
+    </div>
+    <div class="a-field"><label class="a-label">Descripción corta</label><input class="a-input" id="ns-desc" placeholder="Resumen del servicio..."/></div>
+    <div class="a-field"><label class="a-label">Detalles completos</label><textarea class="a-textarea" id="ns-detalles" placeholder="Qué incluye, duración, cuidados..."></textarea></div>
+    <button class="btn-save" onclick="guardarNuevoServicio()" style="width:100%;margin-top:10px">💾 Crear servicio</button>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>
