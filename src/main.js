@@ -5,6 +5,22 @@ import { renderGaleriaPublica } from './galeria.js';
 import { renderGaleriaAdmin, showOk } from './admin.js';
 import './admin.js';
 
+// ── GLOBAL FUNCTIONS — defined immediately so HTML onclicks work ──
+window.abrirOverlay = function(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('show'); document.body.style.overflow = 'hidden'; }
+};
+window.cerrarOverlay = function(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.remove('show'); document.body.style.overflow = ''; }
+};
+window.abrirLogin = function() {
+  document.getElementById('auth-user').value = '';
+  document.getElementById('auth-pass').value = '';
+  document.getElementById('auth-error').classList.remove('show');
+  window.abrirOverlay('overlay-login');
+};
+
 window._horasDisponibles = [...HORAS_DEFAULT];
 let horaSeleccionada = null;
 let unsubSlots = null;
@@ -22,7 +38,7 @@ function renderServicios(serviciosData={}, preciosData={}) {
   customKeys.forEach(c => { if (!allKeys.find(k=>k.id===c.id)) allKeys.push(c); });
 
   // Filter out hidden services
-  const visibleKeys = allKeys.filter(s => !(serviciosData[s.id]?.hidden));
+  const visibleKeys = allKeys.filter(s => !(serviciosActuales[s.id]?.hidden));
   const cats = [...new Set(visibleKeys.map(s=>s.cat))];
   cont.innerHTML = cats.map((cat,ci) => {
     const svcs = visibleKeys.filter(s=>s.cat===cat);
@@ -164,7 +180,7 @@ function actualizarSelectServicios() {
   const customKeys = serviciosActuales._custom || [];
   const allKeys = [...SERVICIO_KEYS, ...customKeys.filter(c=>!SERVICIO_KEYS.find(k=>k.id===c.id))];
   // Filter out hidden services
-  const visibleKeys = allKeys.filter(s => !(serviciosData[s.id]?.hidden));
+  const visibleKeys = allKeys.filter(s => !(serviciosActuales[s.id]?.hidden));
   const cats = [...new Set(visibleKeys.map(s=>s.cat))];
   cats.forEach(cat => {
     const og = document.createElement('optgroup');
@@ -184,8 +200,7 @@ function actualizarSelectServicios() {
 }
 
 // ── OVERLAYS ──
-window.abrirOverlay = function(id) { document.getElementById(id).classList.add('show'); document.body.style.overflow='hidden'; };
-window.cerrarOverlay = function(id) { document.getElementById(id).classList.remove('show'); document.body.style.overflow=''; };
+// abrirOverlay/cerrarOverlay defined above
 
 // ── SLOTS ──
 window.cargarSlots = async function() {
@@ -265,12 +280,7 @@ function mostrarToast(msg,esError) {
 
 // ── AUTH ADMIN ──
 const AU='DulceRosa28', AP='luciana28';
-window.abrirLogin=function(){
-  document.getElementById('auth-user').value='';
-  document.getElementById('auth-pass').value='';
-  document.getElementById('auth-error').classList.remove('show');
-  abrirOverlay('overlay-login');
-};
+// abrirLogin defined above
 window.verificarCredenciales=function(){
   if(document.getElementById('auth-user').value===AU && document.getElementById('auth-pass').value===AP){
     cerrarOverlay('overlay-login');
