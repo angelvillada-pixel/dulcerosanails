@@ -10,9 +10,21 @@ window._horasDisponibles = [...HORAS_DEFAULT];
 let horaSeleccionada = null;
 let unsubSlots = null;
 
-// ── LOGO ──
+// ── LOGO (no necesita Firebase) ──
 document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
-document.getElementById('preview-logo-admin').src = LOGO;
+setTimeout(() => {
+  const prev = document.getElementById('preview-logo-admin');
+  if (prev) prev.src = LOGO;
+}, 100);
+
+// ── ESPERAR FIREBASE ──
+function waitForFirebase() {
+  return new Promise(resolve => {
+    if (window.__db) return resolve();
+    window.addEventListener('fb-ready', resolve, { once: true });
+    setTimeout(resolve, 5000); // fallback timeout
+  });
+}
 
 // ── RENDER SERVICIOS ──
 function renderServicios(serviciosData = {}, preciosData = {}) {
@@ -49,6 +61,16 @@ function renderServicios(serviciosData = {}, preciosData = {}) {
 let preciosActuales = { ...PRECIOS_DEFAULT };
 let serviciosActuales = {};
 
+// Render inicial sin Firebase
+renderServicios({}, PRECIOS_DEFAULT);
+actualizarSelectServicios();
+
+// Iniciar Firebase cuando esté listo
+waitForFirebase().then(() => {
+  startFirebaseListeners();
+});
+
+function startFirebaseListeners() {
 onSnapshot(doc(db, 'config', 'site'), snap => {
   if (!snap.exists()) return;
   const d = snap.data();
@@ -84,8 +106,7 @@ onSnapshot(collection(db, 'galeria'), snap => {
   renderGaleriaAdmin(fotos);
 });
 
-// Render inicial
-renderServicios({}, PRECIOS_DEFAULT);
+} // end startFirebaseListeners
 
 function actualizarSelectServicios() {
   const sel = document.getElementById('inp-servicio');
