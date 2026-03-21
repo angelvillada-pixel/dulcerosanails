@@ -198,7 +198,10 @@ window.guardarServicios = async function() {
     if (btn) { btn.textContent = '💾 Guardar nombres e imágenes'; btn.disabled = false; }
   } catch (e) {
     console.error('Servicios save error:', e);
-    alert('Error al guardar. Verifica que npm install esté ejecutado.');
+    const msg = e?.code === 'permission-denied' ? 'Firebase: permiso denegado. Revisa las reglas de Firestore.' 
+      : e?.code === 'unavailable' ? 'Firebase no disponible. Verifica tu conexión.'
+      : 'Error: ' + (e?.message || e);
+    alert(msg);
     if (btn) { btn.textContent = '💾 Guardar nombres e imágenes'; btn.disabled = false; }
   }
 };

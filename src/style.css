@@ -315,7 +315,7 @@ footer{background:var(--dark);color:rgba(255,255,255,.55);padding:52px 80px 24px
   font-size:.73rem;user-select:none;transition:all .2s;
   background:rgba(255,255,255,.05);border:1.5px solid rgba(239,68,68,.4);
   color:rgba(255,255,255,.38);text-decoration:line-through}
-.hora-chip input{display:none}
+/* hora-chip uses div, no input needed */
 .hora-chip.activa{background:rgba(76,175,80,.2);border-color:#4CAF50;color:#fff;text-decoration:none}
 .hora-chip.activa::before{content:'✓ ';font-size:.68rem;color:#4CAF50}
 /* Logo upload */
