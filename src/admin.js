@@ -1,27 +1,23 @@
 import { db, collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc, onSnapshot, updateDoc, arrayRemove, serverTimestamp } from './firebase.js';
-import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, comprimirImagen, formatCOP, to12h } from './data.js';
+import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, formatCOP, to12h } from './data.js';
 
 const API = 'https://dulce-rosa-api.onrender.com';
-
 let pendingFoto = null;
 let serviciosEnMemoria = {};
 window._svcImages = {};
 
-// ── HELPER: fetch con timeout y manejo de errores ──
-async function apiFetch(url, opts = {}, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+// ── FETCH con timeout y error real ──
+async function api(url, opts = {}, ms = 25000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    const r = await fetch(`${API}${url}`, { ...opts, signal: controller.signal });
-    clearTimeout(timer);
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      throw new Error(body.error || `HTTP ${r.status}`);
-    }
+    const r = await fetch(API + url, { ...opts, signal: ctrl.signal });
+    clearTimeout(t);
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'Error ' + r.status); }
     return r.json();
   } catch (e) {
-    clearTimeout(timer);
-    if (e.name === 'AbortError') throw new Error('Tiempo de espera agotado. El servidor está despertando, intenta en 30 segundos.');
+    clearTimeout(t);
+    if (e.name === 'AbortError') throw new Error('Timeout — el servidor está despertando, espera 30s e intenta de nuevo.');
     throw e;
   }
 }
@@ -48,7 +44,7 @@ window.renderCitas = async function() {
   try {
     const snap = await Promise.race([
       getDocs(collection(db, 'citas')),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
     ]);
     const citas = snap.docs.map(d => ({ ...d.data(), id: d.id }));
     const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
@@ -75,7 +71,7 @@ window.renderCitas = async function() {
         </div>
       </div>`).join('');
   } catch (e) {
-    lista.innerHTML = `<div class="no-citas">${e?.message === 'timeout' ? 'Toca 🔄 Actualizar.' : 'Error: ' + (e?.message || e)}</div>`;
+    lista.innerHTML = `<div class="no-citas">❌ ${e?.message === 'timeout' ? 'Toca 🔄 Actualizar.' : e?.message || e}</div>`;
   }
 };
 
@@ -176,19 +172,16 @@ function _renderSvcAdmin(cont, serviciosData) {
   const btnNuevo = document.createElement('button');
   btnNuevo.className = 'btn-nuevo-svc';
   btnNuevo.textContent = '＋ Nuevo servicio';
-  btnNuevo.onclick = function() { window.abrirFormNuevoServicio(); };
+  btnNuevo.onclick = () => window.abrirFormNuevoServicio();
   cont.appendChild(btnNuevo);
-
   const customKeys = serviciosData._custom || [];
   const allKeys = [...SERVICIO_KEYS, ...customKeys.filter(c => !SERVICIO_KEYS.find(k => k.id === c.id))];
   const cats = [...new Set(allKeys.map(s => s.cat))];
-
   cats.forEach(cat => {
-    const svcs = allKeys.filter(s => s.cat === cat && !(serviciosData[s.id] && serviciosData[s.id].hidden));
+    const svcs = allKeys.filter(s => s.cat === cat && !(serviciosData[s.id]?.hidden));
     if (!svcs.length) return;
     const catTitle = document.createElement('div');
-    catTitle.className = 'svc-cat-title';
-    catTitle.textContent = cat;
+    catTitle.className = 'svc-cat-title'; catTitle.textContent = cat;
     cont.appendChild(catTitle);
     svcs.forEach(s => {
       const info = serviciosData[s.id] || {};
@@ -198,9 +191,8 @@ function _renderSvcAdmin(cont, serviciosData) {
       const card = document.createElement('div');
       card.className = 'svc-edit-card';
       const delBtn = document.createElement('button');
-      delBtn.className = 'btn-del-svc';
-      delBtn.textContent = '✕ Eliminar';
-      delBtn.onclick = function() { window.eliminarServicio(s.id, isBuiltin); };
+      delBtn.className = 'btn-del-svc'; delBtn.textContent = '✕ Eliminar';
+      delBtn.onclick = () => window.eliminarServicio(s.id, isBuiltin);
       card.appendChild(delBtn);
       const header = document.createElement('div');
       header.className = 'svc-edit-card-header';
@@ -209,10 +201,10 @@ function _renderSvcAdmin(cont, serviciosData) {
       card.appendChild(header);
       card.innerHTML += `
         <div class="a-row">
-          <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${s.id}" value="${nombre.replace(/"/g, '&quot;')}"/></div>
+          <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${s.id}" value="${nombre.replace(/"/g,'&quot;')}"/></div>
           <div class="a-field"><label class="a-label">Precio</label><input class="a-input" type="number" id="svc-precio-${s.id}" value="${info.precio || PRECIOS_DEFAULT[s.id] || 0}"/></div>
         </div>
-        <div class="a-field"><label class="a-label">Descripción corta</label><input class="a-input" id="svc-desc-${s.id}" value="${(info.descripcion || s.descripcion || '').replace(/"/g, '&quot;')}"/></div>
+        <div class="a-field"><label class="a-label">Descripción corta</label><input class="a-input" id="svc-desc-${s.id}" value="${(info.descripcion || s.descripcion || '').replace(/"/g,'&quot;')}"/></div>
         <div class="a-field"><label class="a-label">Detalles completos</label><textarea class="a-textarea" id="svc-det-${s.id}">${info.detalles || s.detalles || ''}</textarea></div>`;
       cont.appendChild(card);
     });
@@ -222,10 +214,10 @@ function _renderSvcAdmin(cont, serviciosData) {
 window.subirImagenServicio = function(id, input) {
   const file = input.files[0];
   if (!file) return;
-  comprimirImagen(file, 600, 0.88, 'center 20%').then(b64 => {
+  comprimirImagen(file, 600, 0.88).then(b64 => {
     window._svcImages[id] = b64;
     const prev = document.getElementById('svc-img-preview-' + id);
-    if (prev) prev.innerHTML = `<img src="${b64}" alt="" style="width:52px;height:52px;border-radius:8px;object-fit:cover"/>`;
+    if (prev) prev.innerHTML = `<img src="${b64}" style="width:52px;height:52px;border-radius:8px;object-fit:cover"/>`;
   });
 };
 
@@ -239,49 +231,40 @@ window.guardarServicios = async function() {
     const allKeys = [...SERVICIO_KEYS, ...customKeys.filter(c => !SERVICIO_KEYS.find(k => k.id === c.id))];
     const servicios = { _custom: customKeys };
     allKeys.forEach(s => {
-      const nameEl   = document.getElementById('svc-name-'   + s.id);
-      const precioEl = document.getElementById('svc-precio-' + s.id);
-      const descEl   = document.getElementById('svc-desc-'   + s.id);
-      const detEl    = document.getElementById('svc-det-'    + s.id);
+      const nameEl = document.getElementById('svc-name-' + s.id);
       if (!nameEl) return;
       servicios[s.id] = {
         nombre:      nameEl.value.trim() || s.nombre,
-        precio:      Number(precioEl?.value) || PRECIOS_DEFAULT[s.id] || 0,
-        descripcion: descEl?.value.trim() || '',
-        detalles:    detEl?.value.trim() || '',
-        imagen:      window._svcImages[s.id] || (existing[s.id]?.imagen || null),
-        emoji:       s.emoji || '💅',
-        cat:         s.cat,
-        desde:       s.desde || false,
-        hidden:      existing[s.id]?.hidden || false
+        precio:      Number(document.getElementById('svc-precio-' + s.id)?.value) || 0,
+        descripcion: document.getElementById('svc-desc-' + s.id)?.value.trim() || '',
+        detalles:    document.getElementById('svc-det-' + s.id)?.value.trim() || '',
+        imagen:      window._svcImages[s.id] || existing[s.id]?.imagen || null,
+        emoji: s.emoji || '💅', cat: s.cat, desde: s.desde || false,
+        hidden: existing[s.id]?.hidden || false
       };
     });
     await setDoc(doc(db, 'config', 'servicios'), servicios);
     serviciosEnMemoria = servicios;
     window._svcImages = {};
     showOk('ok-servicios');
-  } catch (e) {
-    alert('Error al guardar: ' + (e?.message || e));
-  }
+  } catch (e) { alert('Error: ' + (e?.message || e)); }
   if (btn) { btn.textContent = '💾 Guardar cambios'; btn.disabled = false; }
 };
 
 window.abrirFormNuevoServicio = function() {
-  const ids = ['ns-nombre', 'ns-precio', 'ns-desc', 'ns-detalles'];
-  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const catEl = document.getElementById('ns-cat');
-  if (catEl) catEl.value = '✨ Uñas';
-  const overlay = document.getElementById('overlay-nuevo-svc');
-  if (overlay) { overlay.classList.add('show'); document.body.style.overflow = 'hidden'; }
+  ['ns-nombre','ns-precio','ns-desc','ns-detalles'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const catEl = document.getElementById('ns-cat'); if (catEl) catEl.value = '✨ Uñas';
+  const ov = document.getElementById('overlay-nuevo-svc');
+  if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
 };
 
 window.guardarNuevoServicio = async function() {
-  const nombre   = (document.getElementById('ns-nombre')?.value || '').trim();
+  const nombre = document.getElementById('ns-nombre')?.value.trim();
+  if (!nombre) { alert('El nombre es obligatorio.'); return; }
   const precio   = Number(document.getElementById('ns-precio')?.value) || 0;
   const cat      = document.getElementById('ns-cat')?.value || '✨ Uñas';
-  const desc     = (document.getElementById('ns-desc')?.value || '').trim();
-  const detalles = (document.getElementById('ns-detalles')?.value || '').trim();
-  if (!nombre) { alert('El nombre es obligatorio.'); return; }
+  const desc     = document.getElementById('ns-desc')?.value.trim() || '';
+  const detalles = document.getElementById('ns-detalles')?.value.trim() || '';
   const id = 'custom_' + Date.now();
   const snap = await getDoc(doc(db, 'config', 'servicios'));
   const existing = snap.exists() ? snap.data() : {};
@@ -290,15 +273,14 @@ window.guardarNuevoServicio = async function() {
   const newData = { ...existing, _custom: customKeys, [id]: { nombre, precio, descripcion: desc, detalles, imagen: null, emoji: '💅', cat, desde: false, hidden: false } };
   await setDoc(doc(db, 'config', 'servicios'), newData);
   serviciosEnMemoria = newData;
-  const overlay = document.getElementById('overlay-nuevo-svc');
-  if (overlay) { overlay.classList.remove('show'); document.body.style.overflow = ''; }
+  const ov = document.getElementById('overlay-nuevo-svc');
+  if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
   const cont = document.getElementById('svc-edit-list');
   if (cont) _renderSvcAdmin(cont, newData);
 };
 
 window.eliminarServicio = async function(id, isBuiltin) {
-  const msg = isBuiltin ? '¿Ocultar este servicio de la página?' : '¿Eliminar este servicio?';
-  if (!confirm(msg)) return;
+  if (!confirm(isBuiltin ? '¿Ocultar este servicio?' : '¿Eliminar este servicio?')) return;
   const snap = await getDoc(doc(db, 'config', 'servicios'));
   const existing = snap.exists() ? snap.data() : {};
   const customKeys = (existing._custom || []).filter(c => c.id !== id);
@@ -313,19 +295,15 @@ window.eliminarServicio = async function(id, isBuiltin) {
 
 // ── LOGO ──
 window.previsualizarLogo = function(input) {
-  const file = input.files[0];
-  if (!file) return;
+  const file = input.files[0]; if (!file) return;
   comprimirImagen(file, 300, 0.85).then(b64 => {
     document.getElementById('preview-logo-admin').src = b64;
     const btn = document.getElementById('btn-guardar-logo');
-    btn.dataset.b64 = b64;
-    btn.style.display = 'inline-block';
+    btn.dataset.b64 = b64; btn.style.display = 'inline-block';
   });
 };
-
 window.guardarLogo = async function(btn) {
-  const b64 = btn.dataset.b64;
-  if (!b64) return;
+  const b64 = btn.dataset.b64; if (!b64) return;
   try {
     const ref = doc(db, 'config', 'site');
     const snap = await getDoc(ref);
@@ -338,72 +316,61 @@ window.guardarLogo = async function(btn) {
 
 // ── GALERÍA ──
 window.seleccionarFoto = function(input) {
-  const file = input.files[0];
-  if (!file) return;
+  const file = input.files[0]; if (!file) return;
   const titulo = document.getElementById('foto-titulo').value.trim();
   comprimirImagen(file, 600, 0.82).then(b64 => {
     pendingFoto = { b64, titulo };
     const prev = document.getElementById('foto-preview-pending');
     if (prev) {
-      prev.innerHTML = `<div class="galeria-pending"><img src="${b64}" alt=""/><div><div style="color:#fff;font-size:.8rem">${titulo || 'Sin título'}</div><div style="color:rgba(255,255,255,.4);font-size:.72rem">${(b64.length / 1024).toFixed(0)}KB</div></div><button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">✕</button></div>`;
+      prev.innerHTML = `<div class="galeria-pending"><img src="${b64}" alt=""/><div><div style="color:#fff;font-size:.8rem">${titulo||'Sin título'}</div></div><button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">✕</button></div>`;
       prev.style.display = 'block';
     }
     document.getElementById('btn-guardar-foto').style.display = 'inline-block';
   });
 };
-
 window.cancelarFoto = function() {
   pendingFoto = null;
   const prev = document.getElementById('foto-preview-pending');
   if (prev) { prev.innerHTML = ''; prev.style.display = 'none'; }
   document.getElementById('btn-guardar-foto').style.display = 'none';
   document.getElementById('foto-titulo').value = '';
-  const inp = document.getElementById('foto-file-input');
-  if (inp) inp.value = '';
+  const inp = document.getElementById('foto-file-input'); if (inp) inp.value = '';
 };
-
 window.guardarFoto = async function() {
   if (!pendingFoto) return;
   const btn = document.getElementById('btn-guardar-foto');
   btn.textContent = '⏳ Subiendo...'; btn.disabled = true;
   try {
     await addDoc(collection(db, 'galeria'), { url: pendingFoto.b64, titulo: pendingFoto.titulo || '', orden: Date.now(), creado: serverTimestamp() });
-    cancelarFoto();
-    showOk('ok-galeria');
-  } catch (e) {
-    alert('Error al guardar foto: ' + (e?.message || e));
-  }
+    cancelarFoto(); showOk('ok-galeria');
+  } catch (e) { alert('Error: ' + (e?.message || e)); }
   btn.textContent = '💾 Guardar foto'; btn.disabled = false;
 };
-
 window.eliminarFoto = async function(id) {
   if (!confirm('¿Eliminar esta foto?')) return;
   await deleteDoc(doc(db, 'galeria', id));
 };
-
 export function renderGaleriaAdmin(fotos) {
-  const grid = document.getElementById('galeria-admin-grid');
-  if (!grid) return;
+  const grid = document.getElementById('galeria-admin-grid'); if (!grid) return;
   if (!fotos.length) { grid.innerHTML = '<p style="color:rgba(255,255,255,.3);font-size:.78rem">No hay fotos aún.</p>'; return; }
   grid.innerHTML = fotos.map(f => `
     <div class="galeria-admin-item">
-      <img src="${f.url}" alt="${f.titulo || ''}" loading="lazy"/>
+      <img src="${f.url}" alt="${f.titulo||''}" loading="lazy"/>
       <button class="del-foto" onclick="eliminarFoto('${f.id}')">✕</button>
       ${f.titulo ? `<div class="g-item-label">${f.titulo}</div>` : ''}
     </div>`).join('');
 }
 
 // ══════════════════════════════════════════
-// ── PROMOCIONES CRUD ──
+// ── PROMOCIONES — CRUD COMPLETO ──
 // ══════════════════════════════════════════
 window.cargarAdminPromociones = async function() {
-  const lista = document.getElementById('promo-lista');
-  if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando... (si tarda, el servidor está despertando)</div>';
+  const lista = document.getElementById('promo-lista'); if (!lista) return;
+  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const promos = await apiFetch('/promociones');
-    if (!Array.isArray(promos) || !promos.length) {
-      lista.innerHTML = '<div class="no-citas">No hay promociones aún. ¡Crea la primera con el botón de arriba!</div>';
+    const promos = await api('/promociones');
+    if (!promos.length) {
+      lista.innerHTML = '<div class="no-citas">No hay promociones. Crea la primera con el botón de arriba ☝️</div>';
       return;
     }
     lista.innerHTML = promos.map(p => `
@@ -415,16 +382,16 @@ window.cargarAdminPromociones = async function() {
         <div class="cita-details">
           <div>${p.descripcion || ''}</div>
           <div>${p.descuento ? '🏷️ ' + p.descuento : ''}</div>
-          ${p.fechafin ? '<div>📅 Hasta: ' + p.fechafin + '</div>' : ''}
+          ${p.fechafin ? `<div>📅 Hasta: ${p.fechafin}</div>` : ''}
         </div>
       </div>`).join('');
   } catch (e) {
-    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ Error: ${e?.message || e}<br><small>Toca 🔄 Actualizar para reintentar.</small></div>`;
+    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ ${e?.message}<br><small>Toca 🔄 Actualizar para reintentar.</small></div>`;
   }
 };
 
 window.abrirFormPromo = function() {
-  ['promo-titulo', 'promo-desc', 'promo-descuento', 'promo-inicio', 'promo-fin'].forEach(id => {
+  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const ov = document.getElementById('overlay-nueva-promo');
@@ -434,98 +401,78 @@ window.abrirFormPromo = function() {
 window.guardarPromocion = async function() {
   const titulo = document.getElementById('promo-titulo')?.value.trim();
   if (!titulo) { alert('El título es obligatorio.'); return; }
-  const promo = {
-    titulo,
-    descripcion: document.getElementById('promo-desc')?.value.trim() || '',
-    descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
-    fechainicio: document.getElementById('promo-inicio')?.value || '',
-    fechafin:    document.getElementById('promo-fin')?.value || '',
-    activa: true
-  };
   const btn = document.querySelector('#overlay-nueva-promo .btn-save');
   if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   try {
-    await apiFetch('/promociones', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(promo)
+    await api('/promociones', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        titulo,
+        descripcion: document.getElementById('promo-desc')?.value.trim() || '',
+        descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
+        fechainicio: document.getElementById('promo-inicio')?.value || '',
+        fechafin:    document.getElementById('promo-fin')?.value || ''
+      })
     });
     const ov = document.getElementById('overlay-nueva-promo');
     if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
     window.cargarAdminPromociones();
     showOk('ok-promos');
-  } catch (e) {
-    alert('❌ Error al guardar: ' + (e?.message || e));
-  }
+  } catch (e) { alert('❌ Error: ' + (e?.message || e)); }
   if (btn) { btn.textContent = '💾 Guardar promoción'; btn.disabled = false; }
 };
 
 window.eliminarPromocion = async function(id) {
   if (!confirm('¿Eliminar esta promoción?')) return;
-  try {
-    await apiFetch('/promociones/' + id, { method: 'DELETE' });
-    window.cargarAdminPromociones();
-  } catch (e) {
-    alert('Error: ' + (e?.message || e));
-  }
+  try { await api('/promociones/' + id, { method: 'DELETE' }); window.cargarAdminPromociones(); }
+  catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
 // ══════════════════════════════════════════
-// ── RESEÑAS ──
+// ── RESEÑAS — CRUD COMPLETO ──
 // ══════════════════════════════════════════
 window.cargarAdminResenas = async function() {
-  const lista = document.getElementById('resenas-lista');
-  if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando... (si tarda, el servidor está despertando)</div>';
+  const lista = document.getElementById('resenas-lista'); if (!lista) return;
+  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const resenas = await apiFetch('/resenas');
-    if (!Array.isArray(resenas) || !resenas.length) {
+    const resenas = await api('/resenas');
+    if (!resenas.length) {
       lista.innerHTML = '<div class="no-citas">No hay reseñas aún. Aparecerán aquí cuando alguien envíe una desde la página.</div>';
       return;
     }
     const pendientes = resenas.filter(r => !r.aprobada).length;
     lista.innerHTML = `
-      ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.4);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">⚠️ <strong>${pendientes} reseña${pendientes > 1 ? 's' : ''} pendiente${pendientes > 1 ? 's' : ''} de aprobación.</strong> Las reseñas sólo aparecen en la página pública cuando les das ✅ Aprobar.</div>` : ''}
-      ${resenas.map(res => `
+      ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">⚠️ ${pendientes} reseña${pendientes>1?'s':''} pendiente${pendientes>1?'s':''} de aprobación — Las reseñas <strong>sólo aparecen en la web pública</strong> después de que hagas clic en ✅ Aprobar.</div>` : ''}
+      ${resenas.map(r => `
       <div class="cita-item">
         <div class="cita-item-header">
-          <div class="cita-name">⭐ ${'★'.repeat(res.estrellas || 5)} ${res.nombre}</div>
+          <div class="cita-name">⭐ ${'★'.repeat(r.estrellas||5)} ${r.nombre}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn-export" style="${res.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${res.id}',${!res.aprobada})">${res.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
-            <button class="btn-delete" onclick="eliminarResena('${res.id}')">✕ Eliminar</button>
+            <button class="btn-export" style="${r.aprobada?'background:rgba(76,175,80,.2);color:#4CAF50':''}" onclick="aprobarResena('${r.id}',${!r.aprobada})">${r.aprobada?'✅ Publicada':'⏳ Aprobar'}</button>
+            <button class="btn-delete" onclick="eliminarResena('${r.id}')">✕</button>
           </div>
         </div>
         <div class="cita-details">
-          <div>💅 ${res.servicio || 'Sin servicio'}</div>
-          <div style="grid-column:span 2;font-style:italic">"${res.comentario || ''}"</div>
+          <div>💅 ${r.servicio||'Sin especificar'}</div>
+          <div style="grid-column:span 2;font-style:italic">"${r.comentario||''}"</div>
         </div>
       </div>`).join('')}`;
   } catch (e) {
-    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ Error: ${e?.message || e}<br><small>Toca 🔄 Actualizar para reintentar.</small></div>`;
+    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ ${e?.message}<br><small>Toca 🔄 Actualizar.</small></div>`;
   }
 };
 
 window.aprobarResena = async function(id, estado) {
   try {
-    await apiFetch('/resenas/' + id, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aprobada: estado })
-    });
+    await api('/resenas/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ aprobada: estado }) });
     window.cargarAdminResenas();
-  } catch (e) {
-    alert('Error: ' + (e?.message || e));
-  }
+  } catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
 window.eliminarResena = async function(id) {
   if (!confirm('¿Eliminar esta reseña?')) return;
-  try {
-    await apiFetch('/resenas/' + id, { method: 'DELETE' });
-    window.cargarAdminResenas();
-  } catch (e) {
-    alert('Error: ' + (e?.message || e));
-  }
+  try { await api('/resenas/' + id, { method: 'DELETE' }); window.cargarAdminResenas(); }
+  catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
 // ── ENVIAR RESEÑA PÚBLICA ──
@@ -539,16 +486,15 @@ window.enviarResena = async function(e) {
   const btn = document.getElementById('btn-resena');
   btn.disabled = true; btn.textContent = '⏳ Enviando...';
   try {
-    await apiFetch('/resenas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre, estrellas: Number(estrellas) || 5, servicio, comentario, creado: new Date().toISOString() })
-    }, 30000); // 30s timeout para cold start de Render
+    await api('/resenas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, estrellas: Number(estrellas)||5, servicio, comentario })
+    }, 35000);
     document.getElementById('resena-form').reset();
     const ok = document.getElementById('resena-ok');
     if (ok) { ok.style.display = 'block'; setTimeout(() => ok.style.display = 'none', 5000); }
   } catch (err) {
-    alert('❌ Error al enviar: ' + (err?.message || 'Intenta de nuevo.'));
+    alert('❌ ' + (err?.message || 'Error al enviar. Intenta de nuevo.'));
   }
   btn.disabled = false; btn.textContent = '💅 Enviar reseña';
 };
