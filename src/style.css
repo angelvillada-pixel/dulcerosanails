@@ -415,3 +415,14 @@ footer{background:var(--dark);color:rgba(255,255,255,.55);padding:52px 80px 24px
   .mobile-cta-bar{display:block}
   body{padding-bottom:64px}
 }
+
+/* ── INSTAGRAM FAB ── */
+.instagram-fab{position:fixed;bottom:84px;left:24px;z-index:300;
+  width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(193,53,132,.45);transition:transform .2s,box-shadow .2s;text-decoration:none;
+  background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)}
+.instagram-fab:hover{transform:scale(1.1) translateY(-2px);box-shadow:0 8px 28px rgba(193,53,132,.55)}
+@media(max-width:960px){
+  .instagram-fab{bottom:76px;left:16px}
+  .whatsapp-fab{bottom:16px;left:16px}
+}
