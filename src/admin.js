@@ -1,9 +1,30 @@
 import { db, collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc, onSnapshot, updateDoc, arrayRemove, serverTimestamp } from './firebase.js';
 import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, comprimirImagen, formatCOP, to12h } from './data.js';
 
+const API = 'https://dulce-rosa-api.onrender.com';
+
 let pendingFoto = null;
 let serviciosEnMemoria = {};
 window._svcImages = {};
+
+// ── HELPER: fetch con timeout y manejo de errores ──
+async function apiFetch(url, opts = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${API}${url}`, { ...opts, signal: controller.signal });
+    clearTimeout(timer);
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${r.status}`);
+    }
+    return r.json();
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw new Error('Tiempo de espera agotado. El servidor está despertando, intenta en 30 segundos.');
+    throw e;
+  }
+}
 
 export function showOk(id) {
   const el = document.getElementById(id);
@@ -152,8 +173,6 @@ window.cargarAdminServicios = async function() {
 
 function _renderSvcAdmin(cont, serviciosData) {
   cont.innerHTML = '';
-
-  // Botón nuevo servicio
   const btnNuevo = document.createElement('button');
   btnNuevo.className = 'btn-nuevo-svc';
   btnNuevo.textContent = '＋ Nuevo servicio';
@@ -167,36 +186,27 @@ function _renderSvcAdmin(cont, serviciosData) {
   cats.forEach(cat => {
     const svcs = allKeys.filter(s => s.cat === cat && !(serviciosData[s.id] && serviciosData[s.id].hidden));
     if (!svcs.length) return;
-
     const catTitle = document.createElement('div');
     catTitle.className = 'svc-cat-title';
     catTitle.textContent = cat;
     cont.appendChild(catTitle);
-
     svcs.forEach(s => {
       const info = serviciosData[s.id] || {};
       const nombre = info.nombre || s.nombre;
       const imagen = info.imagen || null;
       const isBuiltin = !!SERVICIO_KEYS.find(k => k.id === s.id);
-
       const card = document.createElement('div');
       card.className = 'svc-edit-card';
-
-      // Delete button
       const delBtn = document.createElement('button');
       delBtn.className = 'btn-del-svc';
       delBtn.textContent = '✕ Eliminar';
       delBtn.onclick = function() { window.eliminarServicio(s.id, isBuiltin); };
       card.appendChild(delBtn);
-
-      // Image header
       const header = document.createElement('div');
       header.className = 'svc-edit-card-header';
       header.innerHTML = `<div class="svc-edit-img" id="svc-img-preview-${s.id}">${imagen ? `<img src="${imagen}" alt=""/>` : `<span>${s.emoji || '💅'}</span>`}</div>
         <label class="btn-img-svc">📷 Imagen<input type="file" accept="image/*" style="display:none" onchange="subirImagenServicio('${s.id}',this)"/></label>`;
       card.appendChild(header);
-
-      // Fields
       card.innerHTML += `
         <div class="a-row">
           <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${s.id}" value="${nombre.replace(/"/g, '&quot;')}"/></div>
@@ -256,7 +266,6 @@ window.guardarServicios = async function() {
   if (btn) { btn.textContent = '💾 Guardar cambios'; btn.disabled = false; }
 };
 
-// ── NUEVO SERVICIO ──
 window.abrirFormNuevoServicio = function() {
   const ids = ['ns-nombre', 'ns-precio', 'ns-desc', 'ns-detalles'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -273,42 +282,29 @@ window.guardarNuevoServicio = async function() {
   const desc     = (document.getElementById('ns-desc')?.value || '').trim();
   const detalles = (document.getElementById('ns-detalles')?.value || '').trim();
   if (!nombre) { alert('El nombre es obligatorio.'); return; }
-
   const id = 'custom_' + Date.now();
   const snap = await getDoc(doc(db, 'config', 'servicios'));
   const existing = snap.exists() ? snap.data() : {};
   const customKeys = [...(existing._custom || [])];
   customKeys.push({ id, nombre, cat, emoji: '💅', desde: false });
-  const newData = {
-    ...existing,
-    _custom: customKeys,
-    [id]: { nombre, precio, descripcion: desc, detalles, imagen: null, emoji: '💅', cat, desde: false, hidden: false }
-  };
+  const newData = { ...existing, _custom: customKeys, [id]: { nombre, precio, descripcion: desc, detalles, imagen: null, emoji: '💅', cat, desde: false, hidden: false } };
   await setDoc(doc(db, 'config', 'servicios'), newData);
   serviciosEnMemoria = newData;
-
-  // Close overlay
   const overlay = document.getElementById('overlay-nuevo-svc');
   if (overlay) { overlay.classList.remove('show'); document.body.style.overflow = ''; }
-
-  // Refresh list
   const cont = document.getElementById('svc-edit-list');
   if (cont) _renderSvcAdmin(cont, newData);
 };
 
-// ── ELIMINAR SERVICIO ──
 window.eliminarServicio = async function(id, isBuiltin) {
-  const msg = isBuiltin ? '¿Ocultar este servicio de la pagina?' : '¿Eliminar este servicio?';
+  const msg = isBuiltin ? '¿Ocultar este servicio de la página?' : '¿Eliminar este servicio?';
   if (!confirm(msg)) return;
   const snap = await getDoc(doc(db, 'config', 'servicios'));
   const existing = snap.exists() ? snap.data() : {};
   const customKeys = (existing._custom || []).filter(c => c.id !== id);
   const newData = { ...existing, _custom: customKeys };
-  if (isBuiltin) {
-    newData[id] = { ...(existing[id] || {}), hidden: true };
-  } else {
-    delete newData[id];
-  }
+  if (isBuiltin) newData[id] = { ...(existing[id] || {}), hidden: true };
+  else delete newData[id];
   await setDoc(doc(db, 'config', 'servicios'), newData);
   serviciosEnMemoria = newData;
   const cont = document.getElementById('svc-edit-list');
@@ -403,11 +399,13 @@ export function renderGaleriaAdmin(fotos) {
 window.cargarAdminPromociones = async function() {
   const lista = document.getElementById('promo-lista');
   if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando... (si tarda, el servidor está despertando)</div>';
   try {
-    const r = await fetch('https://dulce-rosa-api.onrender.com/promociones');
-    const promos = await r.json();
-    if (!Array.isArray(promos) || !promos.length) { lista.innerHTML = '<div class="no-citas">No hay promociones aún. ¡Crea la primera!</div>'; return; }
+    const promos = await apiFetch('/promociones');
+    if (!Array.isArray(promos) || !promos.length) {
+      lista.innerHTML = '<div class="no-citas">No hay promociones aún. ¡Crea la primera con el botón de arriba!</div>';
+      return;
+    }
     lista.innerHTML = promos.map(p => `
       <div class="cita-item">
         <div class="cita-item-header">
@@ -417,14 +415,16 @@ window.cargarAdminPromociones = async function() {
         <div class="cita-details">
           <div>${p.descripcion || ''}</div>
           <div>${p.descuento ? '🏷️ ' + p.descuento : ''}</div>
-          ${p.fechafin ? '<div>Hasta: ' + p.fechafin + '</div>' : ''}
+          ${p.fechafin ? '<div>📅 Hasta: ' + p.fechafin + '</div>' : ''}
         </div>
       </div>`).join('');
-  } catch (e) { lista.innerHTML = '<div class="no-citas">Error: ' + (e?.message||e) + '</div>'; }
+  } catch (e) {
+    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ Error: ${e?.message || e}<br><small>Toca 🔄 Actualizar para reintentar.</small></div>`;
+  }
 };
 
 window.abrirFormPromo = function() {
-  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => {
+  ['promo-titulo', 'promo-desc', 'promo-descuento', 'promo-inicio', 'promo-fin'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const ov = document.getElementById('overlay-nueva-promo');
@@ -442,22 +442,32 @@ window.guardarPromocion = async function() {
     fechafin:    document.getElementById('promo-fin')?.value || '',
     activa: true
   };
+  const btn = document.querySelector('#overlay-nueva-promo .btn-save');
+  if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   try {
-    const r = await fetch('https://dulce-rosa-api.onrender.com/promociones', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(promo)
+    await apiFetch('/promociones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(promo)
     });
-    if (!r.ok) throw new Error('Error ' + r.status);
     const ov = document.getElementById('overlay-nueva-promo');
     if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
     window.cargarAdminPromociones();
     showOk('ok-promos');
-  } catch (e) { alert('Error: ' + (e?.message || e)); }
+  } catch (e) {
+    alert('❌ Error al guardar: ' + (e?.message || e));
+  }
+  if (btn) { btn.textContent = '💾 Guardar promoción'; btn.disabled = false; }
 };
 
 window.eliminarPromocion = async function(id) {
   if (!confirm('¿Eliminar esta promoción?')) return;
-  await fetch('https://dulce-rosa-api.onrender.com/promociones/' + id, { method: 'DELETE' });
-  window.cargarAdminPromociones();
+  try {
+    await apiFetch('/promociones/' + id, { method: 'DELETE' });
+    window.cargarAdminPromociones();
+  } catch (e) {
+    alert('Error: ' + (e?.message || e));
+  }
 };
 
 // ══════════════════════════════════════════
@@ -466,60 +476,79 @@ window.eliminarPromocion = async function(id) {
 window.cargarAdminResenas = async function() {
   const lista = document.getElementById('resenas-lista');
   if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando... (si tarda, el servidor está despertando)</div>';
   try {
-    const r = await fetch('https://dulce-rosa-api.onrender.com/resenas');
-    const resenas = await r.json();
-    if (!Array.isArray(resenas) || !resenas.length) { lista.innerHTML = '<div class="no-citas">No hay reseñas aún.</div>'; return; }
-    lista.innerHTML = resenas.map(res => `
+    const resenas = await apiFetch('/resenas');
+    if (!Array.isArray(resenas) || !resenas.length) {
+      lista.innerHTML = '<div class="no-citas">No hay reseñas aún. Aparecerán aquí cuando alguien envíe una desde la página.</div>';
+      return;
+    }
+    const pendientes = resenas.filter(r => !r.aprobada).length;
+    lista.innerHTML = `
+      ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.4);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">⚠️ <strong>${pendientes} reseña${pendientes > 1 ? 's' : ''} pendiente${pendientes > 1 ? 's' : ''} de aprobación.</strong> Las reseñas sólo aparecen en la página pública cuando les das ✅ Aprobar.</div>` : ''}
+      ${resenas.map(res => `
       <div class="cita-item">
         <div class="cita-item-header">
-          <div class="cita-name">⭐ ${'★'.repeat(res.estrellas||5)} ${res.nombre}</div>
+          <div class="cita-name">⭐ ${'★'.repeat(res.estrellas || 5)} ${res.nombre}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn-export" onclick="aprobarResena('${res.id}',${!res.aprobada})">${res.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
+            <button class="btn-export" style="${res.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${res.id}',${!res.aprobada})">${res.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
             <button class="btn-delete" onclick="eliminarResena('${res.id}')">✕ Eliminar</button>
           </div>
         </div>
         <div class="cita-details">
-          <div>💅 ${res.servicio||''}</div>
-          <div>${res.comentario||''}</div>
+          <div>💅 ${res.servicio || 'Sin servicio'}</div>
+          <div style="grid-column:span 2;font-style:italic">"${res.comentario || ''}"</div>
         </div>
-      </div>`).join('');
-  } catch (e) { lista.innerHTML = '<div class="no-citas">Error: ' + (e?.message||e) + '</div>'; }
+      </div>`).join('')}`;
+  } catch (e) {
+    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ Error: ${e?.message || e}<br><small>Toca 🔄 Actualizar para reintentar.</small></div>`;
+  }
 };
 
 window.aprobarResena = async function(id, estado) {
-  await fetch('https://dulce-rosa-api.onrender.com/resenas/' + id, {
-    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ aprobada: estado })
-  });
-  window.cargarAdminResenas();
+  try {
+    await apiFetch('/resenas/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aprobada: estado })
+    });
+    window.cargarAdminResenas();
+  } catch (e) {
+    alert('Error: ' + (e?.message || e));
+  }
 };
 
 window.eliminarResena = async function(id) {
   if (!confirm('¿Eliminar esta reseña?')) return;
-  await fetch('https://dulce-rosa-api.onrender.com/resenas/' + id, { method: 'DELETE' });
-  window.cargarAdminResenas();
+  try {
+    await apiFetch('/resenas/' + id, { method: 'DELETE' });
+    window.cargarAdminResenas();
+  } catch (e) {
+    alert('Error: ' + (e?.message || e));
+  }
 };
 
-// Submit reseña pública
+// ── ENVIAR RESEÑA PÚBLICA ──
 window.enviarResena = async function(e) {
   e.preventDefault();
-  const nombre    = document.getElementById('res-nombre')?.value.trim();
-  const estrellas = document.getElementById('res-estrellas')?.value;
-  const servicio  = document.getElementById('res-servicio')?.value.trim();
-  const comentario= document.getElementById('res-comentario')?.value.trim();
+  const nombre     = document.getElementById('res-nombre')?.value.trim();
+  const estrellas  = document.getElementById('res-estrellas')?.value;
+  const servicio   = document.getElementById('res-servicio')?.value.trim();
+  const comentario = document.getElementById('res-comentario')?.value.trim();
   if (!nombre || !comentario) { alert('Nombre y comentario son obligatorios.'); return; }
   const btn = document.getElementById('btn-resena');
   btn.disabled = true; btn.textContent = '⏳ Enviando...';
   try {
-    const r = await fetch('https://dulce-rosa-api.onrender.com/resenas', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ nombre, estrellas: Number(estrellas)||5, servicio, comentario, creado: new Date().toISOString() })
-    });
-    if (!r.ok) throw new Error('Error ' + r.status);
+    await apiFetch('/resenas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, estrellas: Number(estrellas) || 5, servicio, comentario, creado: new Date().toISOString() })
+    }, 30000); // 30s timeout para cold start de Render
     document.getElementById('resena-form').reset();
-    document.getElementById('resena-ok').style.display = 'block';
-    setTimeout(() => { document.getElementById('resena-ok').style.display = 'none'; }, 4000);
-  } catch (err) { alert('Error al enviar. Intenta de nuevo.'); }
+    const ok = document.getElementById('resena-ok');
+    if (ok) { ok.style.display = 'block'; setTimeout(() => ok.style.display = 'none', 5000); }
+  } catch (err) {
+    alert('❌ Error al enviar: ' + (err?.message || 'Intenta de nuevo.'));
+  }
   btn.disabled = false; btn.textContent = '💅 Enviar reseña';
 };
