@@ -30,13 +30,13 @@ export function showOk(id) {
 }
 
 // ── TABS ──
-window.switchTab = function(tab) {
+window.switchTab = function (tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
 };
 
 // ── CITAS ──
-window.renderCitas = async function() {
+window.renderCitas = async function () {
   const q = (document.getElementById('filtro-citas') || { value: '' }).value.toLowerCase();
   const lista = document.getElementById('lista-citas');
   if (!lista) return;
@@ -75,14 +75,14 @@ window.renderCitas = async function() {
   }
 };
 
-window.eliminarCita = async function(id, fecha, hora) {
+window.eliminarCita = async function (id, fecha, hora) {
   if (!confirm('¿Eliminar esta cita?')) return;
   await deleteDoc(doc(db, 'citas', id));
-  try { await updateDoc(doc(db, 'slots', fecha), { booked: arrayRemove(hora) }); } catch {}
+  try { await updateDoc(doc(db, 'slots', fecha), { booked: arrayRemove(hora) }); } catch { }
   window.renderCitas();
 };
 
-window.exportarCitas = async function() {
+window.exportarCitas = async function () {
   const snap = await getDocs(collection(db, 'citas'));
   const citas = snap.docs.map(d => d.data());
   if (!citas.length) { alert('No hay citas.'); return; }
@@ -96,7 +96,7 @@ window.exportarCitas = async function() {
 };
 
 // ── CONFIG ──
-window.cargarAdminConfig = async function() {
+window.cargarAdminConfig = async function () {
   const el = document.getElementById('a-nequi');
   if (el) el.value = '324 568 3032';
   document.querySelectorAll('.hora-chip').forEach(c => c.classList.add('activa'));
@@ -110,7 +110,7 @@ window.cargarAdminConfig = async function() {
   } catch (e) { console.warn('Config load:', e); }
 };
 
-window.guardarConfig = async function() {
+window.guardarConfig = async function () {
   const btn = document.querySelector('#tab-config .btn-save');
   if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   const nequi = document.getElementById('a-nequi').value.trim();
@@ -128,10 +128,10 @@ window.guardarConfig = async function() {
   if (btn) { btn.textContent = '💾 Guardar configuración'; btn.disabled = false; }
 };
 
-window.toggleHora = function(chip) { chip.classList.toggle('activa'); };
+window.toggleHora = function (chip) { chip.classList.toggle('activa'); };
 
 // ── PRECIOS ──
-window.cargarAdminPrecios = async function() {
+window.cargarAdminPrecios = async function () {
   Object.keys(PRECIOS_DEFAULT).forEach(k => {
     const el = document.getElementById('ap-' + k);
     if (el && !el.value) el.value = PRECIOS_DEFAULT[k];
@@ -146,7 +146,7 @@ window.cargarAdminPrecios = async function() {
   } catch (e) { console.warn('Precios load:', e); }
 };
 
-window.guardarPrecios = async function() {
+window.guardarPrecios = async function () {
   const precios = {};
   Object.keys(PRECIOS_DEFAULT).forEach(k => {
     const el = document.getElementById('ap-' + k);
@@ -157,7 +157,7 @@ window.guardarPrecios = async function() {
 };
 
 // ── SERVICIOS ──
-window.cargarAdminServicios = async function() {
+window.cargarAdminServicios = async function () {
   const cont = document.getElementById('svc-edit-list');
   if (!cont) return;
   _renderSvcAdmin(cont, serviciosEnMemoria);
@@ -201,17 +201,17 @@ function _renderSvcAdmin(cont, serviciosData) {
       card.appendChild(header);
       card.innerHTML += `
         <div class="a-row">
-          <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${s.id}" value="${nombre.replace(/"/g,'&quot;')}"/></div>
+          <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${s.id}" value="${nombre.replace(/"/g, '&quot;')}"/></div>
           <div class="a-field"><label class="a-label">Precio</label><input class="a-input" type="number" id="svc-precio-${s.id}" value="${info.precio || PRECIOS_DEFAULT[s.id] || 0}"/></div>
         </div>
-        <div class="a-field"><label class="a-label">Descripción corta</label><input class="a-input" id="svc-desc-${s.id}" value="${(info.descripcion || s.descripcion || '').replace(/"/g,'&quot;')}"/></div>
+        <div class="a-field"><label class="a-label">Descripción corta</label><input class="a-input" id="svc-desc-${s.id}" value="${(info.descripcion || s.descripcion || '').replace(/"/g, '&quot;')}"/></div>
         <div class="a-field"><label class="a-label">Detalles completos</label><textarea class="a-textarea" id="svc-det-${s.id}">${info.detalles || s.detalles || ''}</textarea></div>`;
       cont.appendChild(card);
     });
   });
 }
 
-window.subirImagenServicio = function(id, input) {
+window.subirImagenServicio = function (id, input) {
   const file = input.files[0];
   if (!file) return;
   comprimirImagen(file, 600, 0.88).then(b64 => {
@@ -221,7 +221,7 @@ window.subirImagenServicio = function(id, input) {
   });
 };
 
-window.guardarServicios = async function() {
+window.guardarServicios = async function () {
   const btn = document.querySelector('#tab-servicios .btn-save');
   if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   try {
@@ -234,11 +234,11 @@ window.guardarServicios = async function() {
       const nameEl = document.getElementById('svc-name-' + s.id);
       if (!nameEl) return;
       servicios[s.id] = {
-        nombre:      nameEl.value.trim() || s.nombre,
-        precio:      Number(document.getElementById('svc-precio-' + s.id)?.value) || 0,
+        nombre: nameEl.value.trim() || s.nombre,
+        precio: Number(document.getElementById('svc-precio-' + s.id)?.value) || 0,
         descripcion: document.getElementById('svc-desc-' + s.id)?.value.trim() || '',
-        detalles:    document.getElementById('svc-det-' + s.id)?.value.trim() || '',
-        imagen:      window._svcImages[s.id] || existing[s.id]?.imagen || null,
+        detalles: document.getElementById('svc-det-' + s.id)?.value.trim() || '',
+        imagen: window._svcImages[s.id] || existing[s.id]?.imagen || null,
         emoji: s.emoji || '💅', cat: s.cat, desde: s.desde || false,
         hidden: existing[s.id]?.hidden || false
       };
@@ -251,19 +251,19 @@ window.guardarServicios = async function() {
   if (btn) { btn.textContent = '💾 Guardar cambios'; btn.disabled = false; }
 };
 
-window.abrirFormNuevoServicio = function() {
-  ['ns-nombre','ns-precio','ns-desc','ns-detalles'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+window.abrirFormNuevoServicio = function () {
+  ['ns-nombre', 'ns-precio', 'ns-desc', 'ns-detalles'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const catEl = document.getElementById('ns-cat'); if (catEl) catEl.value = '✨ Uñas';
   const ov = document.getElementById('overlay-nuevo-svc');
   if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
 };
 
-window.guardarNuevoServicio = async function() {
+window.guardarNuevoServicio = async function () {
   const nombre = document.getElementById('ns-nombre')?.value.trim();
   if (!nombre) { alert('El nombre es obligatorio.'); return; }
-  const precio   = Number(document.getElementById('ns-precio')?.value) || 0;
-  const cat      = document.getElementById('ns-cat')?.value || '✨ Uñas';
-  const desc     = document.getElementById('ns-desc')?.value.trim() || '';
+  const precio = Number(document.getElementById('ns-precio')?.value) || 0;
+  const cat = document.getElementById('ns-cat')?.value || '✨ Uñas';
+  const desc = document.getElementById('ns-desc')?.value.trim() || '';
   const detalles = document.getElementById('ns-detalles')?.value.trim() || '';
   const id = 'custom_' + Date.now();
   const snap = await getDoc(doc(db, 'config', 'servicios'));
@@ -279,7 +279,7 @@ window.guardarNuevoServicio = async function() {
   if (cont) _renderSvcAdmin(cont, newData);
 };
 
-window.eliminarServicio = async function(id, isBuiltin) {
+window.eliminarServicio = async function (id, isBuiltin) {
   if (!confirm(isBuiltin ? '¿Ocultar este servicio?' : '¿Eliminar este servicio?')) return;
   const snap = await getDoc(doc(db, 'config', 'servicios'));
   const existing = snap.exists() ? snap.data() : {};
@@ -294,7 +294,7 @@ window.eliminarServicio = async function(id, isBuiltin) {
 };
 
 // ── LOGO ──
-window.previsualizarLogo = function(input) {
+window.previsualizarLogo = function (input) {
   const file = input.files[0]; if (!file) return;
   comprimirImagen(file, 300, 0.85).then(b64 => {
     document.getElementById('preview-logo-admin').src = b64;
@@ -302,7 +302,7 @@ window.previsualizarLogo = function(input) {
     btn.dataset.b64 = b64; btn.style.display = 'inline-block';
   });
 };
-window.guardarLogo = async function(btn) {
+window.guardarLogo = async function (btn) {
   const b64 = btn.dataset.b64; if (!b64) return;
   try {
     const ref = doc(db, 'config', 'site');
@@ -315,20 +315,20 @@ window.guardarLogo = async function(btn) {
 };
 
 // ── GALERÍA ──
-window.seleccionarFoto = function(input) {
+window.seleccionarFoto = function (input) {
   const file = input.files[0]; if (!file) return;
   const titulo = document.getElementById('foto-titulo').value.trim();
   comprimirImagen(file, 600, 0.82).then(b64 => {
     pendingFoto = { b64, titulo };
     const prev = document.getElementById('foto-preview-pending');
     if (prev) {
-      prev.innerHTML = `<div class="galeria-pending"><img src="${b64}" alt=""/><div><div style="color:#fff;font-size:.8rem">${titulo||'Sin título'}</div></div><button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">✕</button></div>`;
+      prev.innerHTML = `<div class="galeria-pending"><img src="${b64}" alt=""/><div><div style="color:#fff;font-size:.8rem">${titulo || 'Sin título'}</div></div><button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">✕</button></div>`;
       prev.style.display = 'block';
     }
     document.getElementById('btn-guardar-foto').style.display = 'inline-block';
   });
 };
-window.cancelarFoto = function() {
+window.cancelarFoto = function () {
   pendingFoto = null;
   const prev = document.getElementById('foto-preview-pending');
   if (prev) { prev.innerHTML = ''; prev.style.display = 'none'; }
@@ -336,7 +336,7 @@ window.cancelarFoto = function() {
   document.getElementById('foto-titulo').value = '';
   const inp = document.getElementById('foto-file-input'); if (inp) inp.value = '';
 };
-window.guardarFoto = async function() {
+window.guardarFoto = async function () {
   if (!pendingFoto) return;
   const btn = document.getElementById('btn-guardar-foto');
   btn.textContent = '⏳ Subiendo...'; btn.disabled = true;
@@ -346,7 +346,7 @@ window.guardarFoto = async function() {
   } catch (e) { alert('Error: ' + (e?.message || e)); }
   btn.textContent = '💾 Guardar foto'; btn.disabled = false;
 };
-window.eliminarFoto = async function(id) {
+window.eliminarFoto = async function (id) {
   if (!confirm('¿Eliminar esta foto?')) return;
   await deleteDoc(doc(db, 'galeria', id));
 };
@@ -355,7 +355,7 @@ export function renderGaleriaAdmin(fotos) {
   if (!fotos.length) { grid.innerHTML = '<p style="color:rgba(255,255,255,.3);font-size:.78rem">No hay fotos aún.</p>'; return; }
   grid.innerHTML = fotos.map(f => `
     <div class="galeria-admin-item">
-      <img src="${f.url}" alt="${f.titulo||''}" loading="lazy"/>
+      <img src="${f.url}" alt="${f.titulo || ''}" loading="lazy"/>
       <button class="del-foto" onclick="eliminarFoto('${f.id}')">✕</button>
       ${f.titulo ? `<div class="g-item-label">${f.titulo}</div>` : ''}
     </div>`).join('');
@@ -364,7 +364,7 @@ export function renderGaleriaAdmin(fotos) {
 // ══════════════════════════════════════════
 // ── PROMOCIONES — CRUD COMPLETO ──
 // ══════════════════════════════════════════
-window.cargarAdminPromociones = async function() {
+window.cargarAdminPromociones = async function () {
   const lista = document.getElementById('promo-lista'); if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
@@ -390,15 +390,15 @@ window.cargarAdminPromociones = async function() {
   }
 };
 
-window.abrirFormPromo = function() {
-  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => {
+window.abrirFormPromo = function () {
+  ['promo-titulo', 'promo-desc', 'promo-descuento', 'promo-inicio', 'promo-fin'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const ov = document.getElementById('overlay-nueva-promo');
   if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
 };
 
-window.guardarPromocion = async function() {
+window.guardarPromocion = async function () {
   const titulo = document.getElementById('promo-titulo')?.value.trim();
   if (!titulo) { alert('El título es obligatorio.'); return; }
   const btn = document.querySelector('#overlay-nueva-promo .btn-save');
@@ -409,9 +409,9 @@ window.guardarPromocion = async function() {
       body: JSON.stringify({
         titulo,
         descripcion: document.getElementById('promo-desc')?.value.trim() || '',
-        descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
+        descuento: document.getElementById('promo-descuento')?.value.trim() || '',
         fechainicio: document.getElementById('promo-inicio')?.value || '',
-        fechafin:    document.getElementById('promo-fin')?.value || ''
+        fechafin: document.getElementById('promo-fin')?.value || ''
       })
     });
     const ov = document.getElementById('overlay-nueva-promo');
@@ -422,7 +422,7 @@ window.guardarPromocion = async function() {
   if (btn) { btn.textContent = '💾 Guardar promoción'; btn.disabled = false; }
 };
 
-window.eliminarPromocion = async function(id) {
+window.eliminarPromocion = async function (id) {
   if (!confirm('¿Eliminar esta promoción?')) return;
   try { await api('/promociones/' + id, { method: 'DELETE' }); window.cargarAdminPromociones(); }
   catch (e) { alert('Error: ' + (e?.message || e)); }
@@ -431,7 +431,7 @@ window.eliminarPromocion = async function(id) {
 // ══════════════════════════════════════════
 // ── RESEÑAS — CRUD COMPLETO ──
 // ══════════════════════════════════════════
-window.cargarAdminResenas = async function() {
+window.cargarAdminResenas = async function () {
   const lista = document.getElementById('resenas-lista'); if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
@@ -442,19 +442,19 @@ window.cargarAdminResenas = async function() {
     }
     const pendientes = resenas.filter(r => !r.aprobada).length;
     lista.innerHTML = `
-      ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">⚠️ ${pendientes} reseña${pendientes>1?'s':''} pendiente${pendientes>1?'s':''} de aprobación — Las reseñas <strong>sólo aparecen en la web pública</strong> después de que hagas clic en ✅ Aprobar.</div>` : ''}
+      ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">⚠️ ${pendientes} reseña${pendientes > 1 ? 's' : ''} pendiente${pendientes > 1 ? 's' : ''} de aprobación — Las reseñas <strong>sólo aparecen en la web pública</strong> después de que hagas clic en ✅ Aprobar.</div>` : ''}
       ${resenas.map(r => `
       <div class="cita-item">
         <div class="cita-item-header">
-          <div class="cita-name">⭐ ${'★'.repeat(r.estrellas||5)} ${r.nombre}</div>
+          <div class="cita-name">⭐ ${'★'.repeat(r.estrellas || 5)} ${r.nombre}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn-export" style="${r.aprobada?'background:rgba(76,175,80,.2);color:#4CAF50':''}" onclick="aprobarResena('${r.id}',${!r.aprobada})">${r.aprobada?'✅ Publicada':'⏳ Aprobar'}</button>
+            <button class="btn-export" style="${r.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${r.id}',${!r.aprobada})">${r.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
             <button class="btn-delete" onclick="eliminarResena('${r.id}')">✕</button>
           </div>
         </div>
         <div class="cita-details">
-          <div>💅 ${r.servicio||'Sin especificar'}</div>
-          <div style="grid-column:span 2;font-style:italic">"${r.comentario||''}"</div>
+          <div>💅 ${r.servicio || 'Sin especificar'}</div>
+          <div style="grid-column:span 2;font-style:italic">"${r.comentario || ''}"</div>
         </div>
       </div>`).join('')}`;
   } catch (e) {
@@ -462,25 +462,25 @@ window.cargarAdminResenas = async function() {
   }
 };
 
-window.aprobarResena = async function(id, estado) {
+window.aprobarResena = async function (id, estado) {
   try {
     await api('/resenas/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ aprobada: estado }) });
     window.cargarAdminResenas();
   } catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
-window.eliminarResena = async function(id) {
+window.eliminarResena = async function (id) {
   if (!confirm('¿Eliminar esta reseña?')) return;
   try { await api('/resenas/' + id, { method: 'DELETE' }); window.cargarAdminResenas(); }
   catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
 // ── ENVIAR RESEÑA PÚBLICA ──
-window.enviarResena = async function(e) {
+window.enviarResena = async function (e) {
   e.preventDefault();
-  const nombre     = document.getElementById('res-nombre')?.value.trim();
-  const estrellas  = document.getElementById('res-estrellas')?.value;
-  const servicio   = document.getElementById('res-servicio')?.value.trim();
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = document.getElementById('res-estrellas')?.value;
+  const servicio = document.getElementById('res-servicio')?.value.trim();
   const comentario = document.getElementById('res-comentario')?.value.trim();
   if (!nombre || !comentario) { alert('Nombre y comentario son obligatorios.'); return; }
   const btn = document.getElementById('btn-resena');
@@ -488,7 +488,7 @@ window.enviarResena = async function(e) {
   try {
     await api('/resenas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre, estrellas: Number(estrellas)||5, servicio, comentario })
+      body: JSON.stringify({ nombre, estrellas: Number(estrellas) || 5, servicio, comentario })
     }, 35000);
     document.getElementById('resena-form').reset();
     const ok = document.getElementById('resena-ok');
