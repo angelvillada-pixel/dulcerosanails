@@ -2,8 +2,7 @@ import { LOGO } from './assets/logo.js';
 import { db, collection, doc, getDoc, setDoc, addDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
 import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen, to12h } from './data.js';
 import { renderGaleriaPublica } from './galeria.js';
-import { renderGaleriaAdmin, showOk } from './admin.js';
-import './admin.js';
+import { renderGaleriaAdmin, showOk, cargarPromosPublicas, cargarResenasPublicas } from './admin.js';
 
 // ── GLOBAL FUNCTIONS — defined immediately so HTML onclicks work ──
 window.abrirOverlay = function(id) {
@@ -310,51 +309,6 @@ function initReveal() {
 }
 
 
-// ── PROMOCIONES DINÁMICAS (REST) ──
-async function cargarPromociones() {
-  try {
-    const r = await fetch('https://dulce-rosa-api.onrender.com/promociones');
-    if (!r.ok) return;
-    const promos = await r.json();
-    if (!Array.isArray(promos) || !promos.length) return;
-    const grid = document.getElementById('promos-grid');
-    if (!grid) return;
-    const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
-    const colors = ['var(--rose)','var(--gold)','#4CAF50'];
-    grid.innerHTML = promos.map((p,i) => `
-      <div class="promo-card reveal">
-        <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
-        <div class="promo-title">${p.titulo}</div>
-        <div class="promo-desc">${p.descripcion||''}</div>
-        <div class="promo-precio"><span class="promo-ahora">${p.descuento||''}</span></div>
-        ${p.fechafin?'<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: '+p.fechafin+'</div>':''}
-        <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
-      </div>`).join('');
-    initReveal();
-  } catch(e) { /* silently fail, static promos remain */ }
-}
-
-// ── RESEÑAS DINÁMICAS (REST) ──
-async function cargarResenasPublicas() {
-  try {
-    const r = await fetch('https://dulce-rosa-api.onrender.com/resenas?aprobada=true');
-    if (!r.ok) return;
-    const resenas = await r.json();
-    const grid = document.getElementById('resenas-grid');
-    if (!grid || !Array.isArray(resenas) || !resenas.length) return;
-    grid.innerHTML = resenas.slice(0,6).map(r => `
-      <div class="testimonio-card reveal">
-        <div class="test-stars">${'★'.repeat(r.estrellas||5)}${'☆'.repeat(5-(r.estrellas||5))}</div>
-        <p class="test-text">"${r.comentario}"</p>
-        <div class="test-autor">
-          <div class="test-avatar">${r.nombre?r.nombre[0].toUpperCase():'C'}</div>
-          <div><strong>${r.nombre}</strong><span>${r.servicio||'Clienta'}</span></div>
-        </div>
-      </div>`).join('');
-    initReveal();
-  } catch(e) { /* silently fail */ }
-}
-
 document.addEventListener('DOMContentLoaded',()=>{
   const fi=document.getElementById('inp-fecha');
   if(fi) fi.min=fechaHoyColombia();
@@ -363,13 +317,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)cerrarOverlay(o.id);}));
   document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.overlay.show').forEach(o=>cerrarOverlay(o.id));});
   document.getElementById('lightbox')?.addEventListener('click',e=>{if(e.target!==document.getElementById('lb-img'))window.cerrarLightbox();});
-  // Close tapped card on outside click
   document.addEventListener('click',e=>{
     if(!e.target.closest('.service-card')) document.querySelectorAll('.service-card.tapped').forEach(c=>c.classList.remove('tapped'));
   });
   initReveal();
   actualizarSelectServicios();
-  // Load REST data (won't block)
-  cargarPromociones();
+  // Cargar promos y reseñas desde Firebase (instantáneo, sin Render)
+  cargarPromosPublicas();
   cargarResenasPublicas();
 });
