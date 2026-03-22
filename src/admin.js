@@ -405,22 +405,22 @@ window.cargarAdminPromociones = async function() {
   if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const snap = await getDocs(collection(db, 'promociones'));
-    const promos = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-    if (!promos.length) { lista.innerHTML = '<div class="no-citas">No hay promociones aún.</div>'; return; }
+    const r = await fetch('https://dulce-rosa-api.onrender.com/promociones');
+    const promos = await r.json();
+    if (!Array.isArray(promos) || !promos.length) { lista.innerHTML = '<div class="no-citas">No hay promociones aún. ¡Crea la primera!</div>'; return; }
     lista.innerHTML = promos.map(p => `
       <div class="cita-item">
         <div class="cita-item-header">
           <div class="cita-name">🎁 ${p.titulo}</div>
-          <button class="btn-delete" onclick="eliminarPromocion('${p.id}')">✕</button>
+          <button class="btn-delete" onclick="eliminarPromocion('${p.id}')">✕ Eliminar</button>
         </div>
         <div class="cita-details">
           <div>${p.descripcion || ''}</div>
           <div>${p.descuento ? '🏷️ ' + p.descuento : ''}</div>
-          ${p.fechaFin ? `<div>Hasta: ${p.fechaFin}</div>` : ''}
+          ${p.fechafin ? '<div>Hasta: ' + p.fechafin + '</div>' : ''}
         </div>
       </div>`).join('');
-  } catch (e) { lista.innerHTML = '<div class="no-citas">Error cargando.</div>'; }
+  } catch (e) { lista.innerHTML = '<div class="no-citas">Error: ' + (e?.message||e) + '</div>'; }
 };
 
 window.abrirFormPromo = function() {
@@ -438,13 +438,15 @@ window.guardarPromocion = async function() {
     titulo,
     descripcion: document.getElementById('promo-desc')?.value.trim() || '',
     descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
-    fechaInicio: document.getElementById('promo-inicio')?.value || '',
-    fechaFin:    document.getElementById('promo-fin')?.value || '',
-    activa: true,
-    creado: serverTimestamp()
+    fechainicio: document.getElementById('promo-inicio')?.value || '',
+    fechafin:    document.getElementById('promo-fin')?.value || '',
+    activa: true
   };
   try {
-    await addDoc(collection(db, 'promociones'), promo);
+    const r = await fetch('https://dulce-rosa-api.onrender.com/promociones', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(promo)
+    });
+    if (!r.ok) throw new Error('Error ' + r.status);
     const ov = document.getElementById('overlay-nueva-promo');
     if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
     window.cargarAdminPromociones();
@@ -454,7 +456,7 @@ window.guardarPromocion = async function() {
 
 window.eliminarPromocion = async function(id) {
   if (!confirm('¿Eliminar esta promoción?')) return;
-  await deleteDoc(doc(db, 'promociones', id));
+  await fetch('https://dulce-rosa-api.onrender.com/promociones/' + id, { method: 'DELETE' });
   window.cargarAdminPromociones();
 };
 
@@ -466,35 +468,36 @@ window.cargarAdminResenas = async function() {
   if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const snap = await getDocs(collection(db, 'resenas'));
-    const resenas = snap.docs.map(d => ({ ...d.data(), id: d.id }))
-      .sort((a,b) => (b.creado||'').localeCompare(a.creado||''));
-    if (!resenas.length) { lista.innerHTML = '<div class="no-citas">No hay reseñas aún.</div>'; return; }
-    lista.innerHTML = resenas.map(r => `
+    const r = await fetch('https://dulce-rosa-api.onrender.com/resenas');
+    const resenas = await r.json();
+    if (!Array.isArray(resenas) || !resenas.length) { lista.innerHTML = '<div class="no-citas">No hay reseñas aún.</div>'; return; }
+    lista.innerHTML = resenas.map(res => `
       <div class="cita-item">
         <div class="cita-item-header">
-          <div class="cita-name">⭐ ${'★'.repeat(r.estrellas||5)} ${r.nombre}</div>
-          <div style="display:flex;gap:6px">
-            <button class="btn-export" onclick="aprobarResena('${r.id}',${!r.aprobada})">${r.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
-            <button class="btn-delete" onclick="eliminarResena('${r.id}')">✕</button>
+          <div class="cita-name">⭐ ${'★'.repeat(res.estrellas||5)} ${res.nombre}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn-export" onclick="aprobarResena('${res.id}',${!res.aprobada})">${res.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
+            <button class="btn-delete" onclick="eliminarResena('${res.id}')">✕ Eliminar</button>
           </div>
         </div>
         <div class="cita-details">
-          <div>💅 ${r.servicio||''}</div>
-          <div>${r.comentario||''}</div>
+          <div>💅 ${res.servicio||''}</div>
+          <div>${res.comentario||''}</div>
         </div>
       </div>`).join('');
-  } catch (e) { lista.innerHTML = '<div class="no-citas">Error cargando.</div>'; }
+  } catch (e) { lista.innerHTML = '<div class="no-citas">Error: ' + (e?.message||e) + '</div>'; }
 };
 
 window.aprobarResena = async function(id, estado) {
-  await updateDoc(doc(db, 'resenas', id), { aprobada: estado });
+  await fetch('https://dulce-rosa-api.onrender.com/resenas/' + id, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ aprobada: estado })
+  });
   window.cargarAdminResenas();
 };
 
 window.eliminarResena = async function(id) {
   if (!confirm('¿Eliminar esta reseña?')) return;
-  await deleteDoc(doc(db, 'resenas', id));
+  await fetch('https://dulce-rosa-api.onrender.com/resenas/' + id, { method: 'DELETE' });
   window.cargarAdminResenas();
 };
 
@@ -509,10 +512,11 @@ window.enviarResena = async function(e) {
   const btn = document.getElementById('btn-resena');
   btn.disabled = true; btn.textContent = '⏳ Enviando...';
   try {
-    await addDoc(collection(db, 'resenas'), {
-      nombre, estrellas: Number(estrellas)||5, servicio, comentario,
-      aprobada: false, creado: new Date().toISOString()
+    const r = await fetch('https://dulce-rosa-api.onrender.com/resenas', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ nombre, estrellas: Number(estrellas)||5, servicio, comentario, creado: new Date().toISOString() })
     });
+    if (!r.ok) throw new Error('Error ' + r.status);
     document.getElementById('resena-form').reset();
     document.getElementById('resena-ok').style.display = 'block';
     setTimeout(() => { document.getElementById('resena-ok').style.display = 'none'; }, 4000);

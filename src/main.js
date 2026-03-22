@@ -310,50 +310,49 @@ function initReveal() {
 }
 
 
-// ── PROMOCIONES DINÁMICAS ──
-onSnapshot(collection(db,'promociones'), snap => {
-  const promos = snap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.activa);
-  renderPromociones(promos);
-});
-
-function renderPromociones(promos) {
-  const grid = document.getElementById('promos-grid');
-  if (!grid) return;
-  if (!promos.length) return; // keep static defaults
-  const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
-  const colors = ['var(--rose)','var(--gold)','#4CAF50'];
-  grid.innerHTML = promos.map((p,i) => `
-    <div class="promo-card reveal">
-      <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
-      <div class="promo-title">${p.titulo}</div>
-      <div class="promo-desc">${p.descripcion||''}</div>
-      <div class="promo-precio"><span class="promo-ahora">${p.descuento||''}</span></div>
-      ${p.fechaFin?`<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${p.fechaFin}</div>`:''}
-      <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
-    </div>`).join('');
+// ── PROMOCIONES DINÁMICAS (REST) ──
+async function cargarPromociones() {
+  try {
+    const r = await fetch('https://dulce-rosa-api.onrender.com/promociones');
+    if (!r.ok) return;
+    const promos = await r.json();
+    if (!Array.isArray(promos) || !promos.length) return;
+    const grid = document.getElementById('promos-grid');
+    if (!grid) return;
+    const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
+    const colors = ['var(--rose)','var(--gold)','#4CAF50'];
+    grid.innerHTML = promos.map((p,i) => `
+      <div class="promo-card reveal">
+        <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
+        <div class="promo-title">${p.titulo}</div>
+        <div class="promo-desc">${p.descripcion||''}</div>
+        <div class="promo-precio"><span class="promo-ahora">${p.descuento||''}</span></div>
+        ${p.fechafin?'<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: '+p.fechafin+'</div>':''}
+        <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
+      </div>`).join('');
+    initReveal();
+  } catch(e) { /* silently fail, static promos remain */ }
 }
 
-// ── RESEÑAS DINÁMICAS ──
-onSnapshot(collection(db,'resenas'), snap => {
-  const resenas = snap.docs.map(d=>({id:d.id,...d.data()}))
-    .filter(r=>r.aprobada)
-    .sort((a,b)=>(b.creado||'').localeCompare(a.creado||''))
-    .slice(0,6);
-  renderResenasPublicas(resenas);
-});
-
-function renderResenasPublicas(resenas) {
-  const grid = document.getElementById('resenas-grid');
-  if (!grid || !resenas.length) return;
-  grid.innerHTML = resenas.map(r => `
-    <div class="testimonio-card reveal">
-      <div class="test-stars">${'★'.repeat(r.estrellas||5)}${'☆'.repeat(5-(r.estrellas||5))}</div>
-      <p class="test-text">"${r.comentario}"</p>
-      <div class="test-autor">
-        <div class="test-avatar">${r.nombre?r.nombre[0].toUpperCase():'C'}</div>
-        <div><strong>${r.nombre}</strong><span>${r.servicio||'Clienta'}</span></div>
-      </div>
-    </div>`).join('');
+// ── RESEÑAS DINÁMICAS (REST) ──
+async function cargarResenasPublicas() {
+  try {
+    const r = await fetch('https://dulce-rosa-api.onrender.com/resenas?aprobada=true');
+    if (!r.ok) return;
+    const resenas = await r.json();
+    const grid = document.getElementById('resenas-grid');
+    if (!grid || !Array.isArray(resenas) || !resenas.length) return;
+    grid.innerHTML = resenas.slice(0,6).map(r => `
+      <div class="testimonio-card reveal">
+        <div class="test-stars">${'★'.repeat(r.estrellas||5)}${'☆'.repeat(5-(r.estrellas||5))}</div>
+        <p class="test-text">"${r.comentario}"</p>
+        <div class="test-autor">
+          <div class="test-avatar">${r.nombre?r.nombre[0].toUpperCase():'C'}</div>
+          <div><strong>${r.nombre}</strong><span>${r.servicio||'Clienta'}</span></div>
+        </div>
+      </div>`).join('');
+    initReveal();
+  } catch(e) { /* silently fail */ }
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -370,4 +369,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   initReveal();
   actualizarSelectServicios();
+  // Load REST data (won't block)
+  cargarPromociones();
+  cargarResenasPublicas();
 });
