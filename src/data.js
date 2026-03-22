@@ -1,5 +1,14 @@
 export const HORAS_DEFAULT = ['8:00','9:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
 
+// Convierte '13:00' → '1:00 P.M.' | '8:00' → '8:00 A.M.'
+export function to12h(hora) {
+  if (!hora) return hora;
+  const [h, m] = hora.split(':').map(Number);
+  const suffix = h < 12 ? 'A.M.' : 'P.M.';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2,'0')} ${suffix}`;
+}
+
 export const PRECIOS_DEFAULT = {
   esmaltado_manos:22000, esmaltado_pies:22000, semi_hombres:25000, semi_mujeres:38000,
   press_on:75000, dipping:65000, acrilicas:95000, poligel:85000,
@@ -31,7 +40,7 @@ export function fechaHoyColombia() {
 }
 export function formatCOP(n) { return '$'+Number(n).toLocaleString('es-CO'); }
 
-export function comprimirImagen(file, maxW=400, q=0.65) {
+export function comprimirImagen(file, maxW=400, q=0.65, _objectPosition='center') {
   return new Promise(res => {
     const r = new FileReader();
     r.onload = e => {

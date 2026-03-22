@@ -1,6 +1,6 @@
 import { LOGO } from './assets/logo.js';
 import { db, collection, doc, getDoc, setDoc, addDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
-import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen } from './data.js';
+import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen, to12h } from './data.js';
 import { renderGaleriaPublica } from './galeria.js';
 import { renderGaleriaAdmin, showOk } from './admin.js';
 import './admin.js';
@@ -264,7 +264,7 @@ window.enviarCita = async function(e) {
         body:JSON.stringify({_subject:'💅 Nueva cita — Dulce Rosa',Nombre:nombre,Teléfono:tel,Servicio:servicio,Fecha:fecha,Hora:hora,Nota:nota||'Sin comentarios',_template:'table'})
       });
     } catch{}
-    mostrarToast('🌸 ¡Cita enviada! Te contactaremos para confirmar el abono.',false);
+    mostrarToast(`🌸 ¡Cita enviada! Tu cita es el ${fecha} a las ${to12h(hora)}. Te contactaremos para confirmar el abono.`,false);
     btn.textContent='✅ ¡Cita solicitada!'; btn.style.background='linear-gradient(135deg,#4CAF50,#66BB6A)';
     // Show WhatsApp confirmation button
     const waMsg = encodeURIComponent(`Hola Dulce Rosa 💅\nQuiero confirmar mi cita:\n• Servicio: ${servicio.split('—')[0].trim()}\n• Fecha: ${fecha}\n• Hora: ${hora}\nNombre: ${nombre}\nTeléfono: ${tel}`);
@@ -307,6 +307,53 @@ function initReveal() {
     if(r.top<window.innerHeight&&r.bottom>=0) el.classList.add('visible');
     else obs.observe(el);
   });
+}
+
+
+// ── PROMOCIONES DINÁMICAS ──
+onSnapshot(collection(db,'promociones'), snap => {
+  const promos = snap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.activa);
+  renderPromociones(promos);
+});
+
+function renderPromociones(promos) {
+  const grid = document.getElementById('promos-grid');
+  if (!grid) return;
+  if (!promos.length) return; // keep static defaults
+  const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
+  const colors = ['var(--rose)','var(--gold)','#4CAF50'];
+  grid.innerHTML = promos.map((p,i) => `
+    <div class="promo-card reveal">
+      <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
+      <div class="promo-title">${p.titulo}</div>
+      <div class="promo-desc">${p.descripcion||''}</div>
+      <div class="promo-precio"><span class="promo-ahora">${p.descuento||''}</span></div>
+      ${p.fechaFin?`<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${p.fechaFin}</div>`:''}
+      <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
+    </div>`).join('');
+}
+
+// ── RESEÑAS DINÁMICAS ──
+onSnapshot(collection(db,'resenas'), snap => {
+  const resenas = snap.docs.map(d=>({id:d.id,...d.data()}))
+    .filter(r=>r.aprobada)
+    .sort((a,b)=>(b.creado||'').localeCompare(a.creado||''))
+    .slice(0,6);
+  renderResenasPublicas(resenas);
+});
+
+function renderResenasPublicas(resenas) {
+  const grid = document.getElementById('resenas-grid');
+  if (!grid || !resenas.length) return;
+  grid.innerHTML = resenas.map(r => `
+    <div class="testimonio-card reveal">
+      <div class="test-stars">${'★'.repeat(r.estrellas||5)}${'☆'.repeat(5-(r.estrellas||5))}</div>
+      <p class="test-text">"${r.comentario}"</p>
+      <div class="test-autor">
+        <div class="test-avatar">${r.nombre?r.nombre[0].toUpperCase():'C'}</div>
+        <div><strong>${r.nombre}</strong><span>${r.servicio||'Clienta'}</span></div>
+      </div>
+    </div>`).join('');
 }
 
 document.addEventListener('DOMContentLoaded',()=>{

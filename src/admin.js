@@ -1,5 +1,5 @@
 import { db, collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc, onSnapshot, updateDoc, arrayRemove, serverTimestamp } from './firebase.js';
-import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, comprimirImagen, formatCOP } from './data.js';
+import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, comprimirImagen, formatCOP, to12h } from './data.js';
 
 let pendingFoto = null;
 let serviciosEnMemoria = {};
@@ -43,7 +43,7 @@ window.renderCitas = async function() {
         <div class="cita-item-header">
           <div class="cita-name">👤 ${c.nombre}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <span class="cita-badge">${c.fecha} · ${c.hora}</span>
+            <span class="cita-badge">${c.fecha} · ${to12h(c.hora)}</span>
             <button class="btn-delete" onclick="eliminarCita('${c.id}','${c.fecha}','${c.hora}')">✕</button>
           </div>
         </div>
@@ -71,7 +71,7 @@ window.exportarCitas = async function() {
   if (!citas.length) { alert('No hay citas.'); return; }
   let txt = 'CITAS — DULCE ROSA NAILS SPA\n' + '='.repeat(44) + '\n\n';
   citas.sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora))
-    .forEach((c, i) => { txt += `${i + 1}. ${c.nombre}\n   Tel: ${c.tel}\n   Servicio: ${c.servicio}\n   Fecha: ${c.fecha} a las ${c.hora}\n${c.nota ? '   Nota: ' + c.nota + '\n' : ''}\n`; });
+    .forEach((c, i) => { txt += `${i + 1}. ${c.nombre}\n   Tel: ${c.tel}\n   Servicio: ${c.servicio}\n   Fecha: ${c.fecha} a las ${to12h(c.hora)}\n${c.nota ? '   Nota: ' + c.nota + '\n' : ''}\n`; });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
   a.download = 'citas-dulce-rosa.txt';
@@ -212,7 +212,7 @@ function _renderSvcAdmin(cont, serviciosData) {
 window.subirImagenServicio = function(id, input) {
   const file = input.files[0];
   if (!file) return;
-  comprimirImagen(file, 600, 0.88).then(b64 => {
+  comprimirImagen(file, 600, 0.88, 'center 20%').then(b64 => {
     window._svcImages[id] = b64;
     const prev = document.getElementById('svc-img-preview-' + id);
     if (prev) prev.innerHTML = `<img src="${b64}" alt="" style="width:52px;height:52px;border-radius:8px;object-fit:cover"/>`;
@@ -396,3 +396,126 @@ export function renderGaleriaAdmin(fotos) {
       ${f.titulo ? `<div class="g-item-label">${f.titulo}</div>` : ''}
     </div>`).join('');
 }
+
+// ══════════════════════════════════════════
+// ── PROMOCIONES CRUD ──
+// ══════════════════════════════════════════
+window.cargarAdminPromociones = async function() {
+  const lista = document.getElementById('promo-lista');
+  if (!lista) return;
+  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+  try {
+    const snap = await getDocs(collection(db, 'promociones'));
+    const promos = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    if (!promos.length) { lista.innerHTML = '<div class="no-citas">No hay promociones aún.</div>'; return; }
+    lista.innerHTML = promos.map(p => `
+      <div class="cita-item">
+        <div class="cita-item-header">
+          <div class="cita-name">🎁 ${p.titulo}</div>
+          <button class="btn-delete" onclick="eliminarPromocion('${p.id}')">✕</button>
+        </div>
+        <div class="cita-details">
+          <div>${p.descripcion || ''}</div>
+          <div>${p.descuento ? '🏷️ ' + p.descuento : ''}</div>
+          ${p.fechaFin ? `<div>Hasta: ${p.fechaFin}</div>` : ''}
+        </div>
+      </div>`).join('');
+  } catch (e) { lista.innerHTML = '<div class="no-citas">Error cargando.</div>'; }
+};
+
+window.abrirFormPromo = function() {
+  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const ov = document.getElementById('overlay-nueva-promo');
+  if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
+};
+
+window.guardarPromocion = async function() {
+  const titulo = document.getElementById('promo-titulo')?.value.trim();
+  if (!titulo) { alert('El título es obligatorio.'); return; }
+  const promo = {
+    titulo,
+    descripcion: document.getElementById('promo-desc')?.value.trim() || '',
+    descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
+    fechaInicio: document.getElementById('promo-inicio')?.value || '',
+    fechaFin:    document.getElementById('promo-fin')?.value || '',
+    activa: true,
+    creado: serverTimestamp()
+  };
+  try {
+    await addDoc(collection(db, 'promociones'), promo);
+    const ov = document.getElementById('overlay-nueva-promo');
+    if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
+    window.cargarAdminPromociones();
+    showOk('ok-promos');
+  } catch (e) { alert('Error: ' + (e?.message || e)); }
+};
+
+window.eliminarPromocion = async function(id) {
+  if (!confirm('¿Eliminar esta promoción?')) return;
+  await deleteDoc(doc(db, 'promociones', id));
+  window.cargarAdminPromociones();
+};
+
+// ══════════════════════════════════════════
+// ── RESEÑAS ──
+// ══════════════════════════════════════════
+window.cargarAdminResenas = async function() {
+  const lista = document.getElementById('resenas-lista');
+  if (!lista) return;
+  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+  try {
+    const snap = await getDocs(collection(db, 'resenas'));
+    const resenas = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+      .sort((a,b) => (b.creado||'').localeCompare(a.creado||''));
+    if (!resenas.length) { lista.innerHTML = '<div class="no-citas">No hay reseñas aún.</div>'; return; }
+    lista.innerHTML = resenas.map(r => `
+      <div class="cita-item">
+        <div class="cita-item-header">
+          <div class="cita-name">⭐ ${'★'.repeat(r.estrellas||5)} ${r.nombre}</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-export" onclick="aprobarResena('${r.id}',${!r.aprobada})">${r.aprobada ? '✅ Publicada' : '⏳ Aprobar'}</button>
+            <button class="btn-delete" onclick="eliminarResena('${r.id}')">✕</button>
+          </div>
+        </div>
+        <div class="cita-details">
+          <div>💅 ${r.servicio||''}</div>
+          <div>${r.comentario||''}</div>
+        </div>
+      </div>`).join('');
+  } catch (e) { lista.innerHTML = '<div class="no-citas">Error cargando.</div>'; }
+};
+
+window.aprobarResena = async function(id, estado) {
+  await updateDoc(doc(db, 'resenas', id), { aprobada: estado });
+  window.cargarAdminResenas();
+};
+
+window.eliminarResena = async function(id) {
+  if (!confirm('¿Eliminar esta reseña?')) return;
+  await deleteDoc(doc(db, 'resenas', id));
+  window.cargarAdminResenas();
+};
+
+// Submit reseña pública
+window.enviarResena = async function(e) {
+  e.preventDefault();
+  const nombre    = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = document.getElementById('res-estrellas')?.value;
+  const servicio  = document.getElementById('res-servicio')?.value.trim();
+  const comentario= document.getElementById('res-comentario')?.value.trim();
+  if (!nombre || !comentario) { alert('Nombre y comentario son obligatorios.'); return; }
+  const btn = document.getElementById('btn-resena');
+  btn.disabled = true; btn.textContent = '⏳ Enviando...';
+  try {
+    await addDoc(collection(db, 'resenas'), {
+      nombre, estrellas: Number(estrellas)||5, servicio, comentario,
+      aprobada: false, creado: new Date().toISOString()
+    });
+    document.getElementById('resena-form').reset();
+    document.getElementById('resena-ok').style.display = 'block';
+    setTimeout(() => { document.getElementById('resena-ok').style.display = 'none'; }, 4000);
+  } catch (err) { alert('Error al enviar. Intenta de nuevo.'); }
+  btn.disabled = false; btn.textContent = '💅 Enviar reseña';
+};

@@ -144,6 +144,42 @@
   </div>
 </section>
 
+
+<!-- ═══ RESEÑAS PÚBLICAS ═══ -->
+<section id="resenas" style="padding:72px 80px;background:var(--blush-pale)">
+  <div class="section-header" style="margin-bottom:40px">
+    <p class="section-tag">Opiniones reales</p>
+    <h2 class="section-title">Reseñas de nuestras <em>clientas</em></h2>
+    <div class="section-divider"></div>
+  </div>
+  <div id="resenas-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;margin-bottom:44px"></div>
+  <!-- Formulario reseña -->
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;box-shadow:0 8px 32px rgba(155,58,90,.1)">
+    <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:var(--dark);margin-bottom:6px">Deja tu reseña 💅</h3>
+    <p style="font-size:.83rem;color:var(--muted);margin-bottom:20px">Tu opinión ayuda a otras clientas a elegir</p>
+    <form id="resena-form" onsubmit="enviarResena(event)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Tu nombre</label>
+          <input id="res-nombre" type="text" required placeholder="Ej: María" style="width:100%;border:1.5px solid var(--blush);border-radius:8px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none"/></div>
+        <div><label style="font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Calificación</label>
+          <select id="res-estrellas" style="width:100%;border:1.5px solid var(--blush);border-radius:8px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none;background:#fff">
+            <option value="5">★★★★★ Excelente</option>
+            <option value="4">★★★★☆ Muy bueno</option>
+            <option value="3">★★★☆☆ Bueno</option>
+          </select></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Servicio recibido</label>
+        <input id="res-servicio" type="text" placeholder="Ej: Acrílicas, Semipermanente..." style="width:100%;border:1.5px solid var(--blush);border-radius:8px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none"/></div>
+      <div style="margin-bottom:16px"><label style="font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px">Tu comentario *</label>
+        <textarea id="res-comentario" required rows="3" placeholder="Cuéntanos tu experiencia..." style="width:100%;border:1.5px solid var(--blush);border-radius:8px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none;resize:vertical"></textarea></div>
+      <button id="btn-resena" type="submit" class="btn-primary" style="width:100%;padding:13px">💅 Enviar reseña</button>
+      <div id="resena-ok" style="display:none;margin-top:12px;padding:11px;background:#e8f5e9;border-radius:8px;color:#2e7d32;font-size:.84rem;text-align:center">
+        🌸 ¡Gracias! Tu reseña será publicada pronto.
+      </div>
+    </form>
+  </div>
+</section>
+
 <section id="ubicacion">
   <div class="location-info reveal-left">
     <p class="section-tag">Dónde encontrarnos</p>
@@ -329,6 +365,10 @@
       <button class="tab-btn" data-tab="config" onclick="switchTab('config');cargarAdminConfig()">⚙️ Config</button>
       <button class="tab-btn" data-tab="logo" onclick="switchTab('logo')">🖼️ Logo</button>
       <button class="tab-btn" data-tab="galeria" onclick="switchTab('galeria')">📷 Galería</button>
+      <button class="tab-btn" data-tab="promos" onclick="switchTab('promos');cargarAdminPromociones()">🎁 Promos</button>
+      <button class="tab-btn" data-tab="resenas" onclick="switchTab('resenas');cargarAdminResenas()">⭐ Reseñas</button>
+      <button class="tab-btn" data-tab="promos" onclick="switchTab('promos');cargarAdminPromociones()">🎁 Promos</button>
+      <button class="tab-btn" data-tab="resenas" onclick="switchTab('resenas');cargarAdminResenas()">⭐ Reseñas</button>
     </div>
 
     <!-- CITAS -->
@@ -411,7 +451,41 @@
       </div>
       <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin:13px 0 7px">Fotos actuales (toca ✕ para eliminar):</p>
       <div class="galeria-admin-grid" id="galeria-admin-grid"></div>
+
+    <!-- PROMOS TAB -->
+    <div class="tab-pane" id="tab-promos">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <p style="color:rgba(255,255,255,.38);font-size:.76rem">Gestiona las promociones de la página.</p>
+        <button class="btn-nuevo-svc" onclick="abrirFormPromo()">＋ Nueva promo</button>
+      </div>
+      <div id="promo-lista"><div class="no-citas">Cargando...</div></div>
+      <span class="save-ok" id="ok-promos">✅ ¡Guardado!</span>
     </div>
+
+    <!-- RESEÑAS TAB -->
+    <div class="tab-pane" id="tab-resenas">
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">Aprueba o elimina reseñas. Las aprobadas aparecen en la página.</p>
+      <button class="btn-export" onclick="cargarAdminResenas()" style="margin-bottom:11px">🔄 Actualizar</button>
+      <div id="resenas-lista"></div>
+    </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══ OVERLAY NUEVA PROMO ═══ -->
+<div id="overlay-nueva-promo" class="overlay">
+  <div class="modal" style="max-width:460px">
+    <button class="modal-close" onclick="cerrarOverlay('overlay-nueva-promo')">&times;</button>
+    <div class="modal-title">🎁 Nueva Promoción</div>
+    <div class="modal-sub">Se mostrará en la sección de promociones</div>
+    <div class="a-field"><label class="a-label">Título *</label><input class="a-input" id="promo-titulo" placeholder="Ej: Combo Completo"/></div>
+    <div class="a-field"><label class="a-label">Descripción</label><input class="a-input" id="promo-desc" placeholder="Qué incluye..."/></div>
+    <div class="a-row">
+      <div class="a-field"><label class="a-label">Descuento / Precio</label><input class="a-input" id="promo-descuento" placeholder="$60.000 o 20% OFF"/></div>
+      <div class="a-field"><label class="a-label">Válida hasta</label><input class="a-input" type="date" id="promo-fin"/></div>
+    </div>
+    <button class="btn-save" onclick="guardarPromocion()" style="width:100%;margin-top:10px">💾 Guardar promoción</button>
   </div>
 </div>
 
