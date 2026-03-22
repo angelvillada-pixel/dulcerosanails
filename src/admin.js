@@ -1,15 +1,38 @@
 import { db, collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc, onSnapshot, updateDoc, arrayRemove, serverTimestamp } from './firebase.js';
 import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, formatCOP, to12h } from './data.js';
 
-// ══════════════════════════════════════════
-// RESEÑAS Y PROMOS → Firebase Firestore directamente
-// (sin depender de Render/API)
-// ══════════════════════════════════════════
-
-const API = 'https://dulce-rosa-api.onrender.com';
 let pendingFoto = null;
 let serviciosEnMemoria = {};
 window._svcImages = {};
+
+// ══════════════════════════════════════════
+// FIREBASE REAL — usa window.__db (firebase-init.js)
+// para reseñas y promos, evitando Render/cold-start
+// ══════════════════════════════════════════
+function realFB() {
+  // Espera hasta que firebase-init.js haya cargado __db y __fb
+  return new Promise((resolve) => {
+    if (window.__db && window.__fb) { resolve({ db: window.__db, fb: window.__fb }); return; }
+    window.addEventListener('fb-ready', () => resolve({ db: window.__db, fb: window.__fb }), { once: true });
+    // fallback timeout: 5s
+    setTimeout(() => resolve({ db: window.__db, fb: window.__fb }), 5000);
+  });
+}
+
+async function getArr(key) {
+  try {
+    const { db: rdb, fb } = await realFB();
+    const snap = await fb.getDoc(fb.doc(rdb, 'config', key));
+    if (!snap.exists()) return [];
+    const d = snap.data();
+    return Array.isArray(d.lista) ? d.lista : [];
+  } catch (e) { console.warn('getArr error', key, e); return []; }
+}
+
+async function saveArr(key, lista) {
+  const { db: rdb, fb } = await realFB();
+  await fb.setDoc(fb.doc(rdb, 'config', key), { lista });
+}
 
 export function showOk(id) {
   const el = document.getElementById(id);
@@ -80,8 +103,7 @@ window.exportarCitas = async function() {
     .forEach((c, i) => { txt += `${i + 1}. ${c.nombre}\n   Tel: ${c.tel}\n   Servicio: ${c.servicio}\n   Fecha: ${c.fecha} a las ${to12h(c.hora)}\n${c.nota ? '   Nota: ' + c.nota + '\n' : ''}\n`; });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
-  a.download = 'citas-dulce-rosa.txt';
-  a.click();
+  a.download = 'citas-dulce-rosa.txt'; a.click();
 };
 
 // ── CONFIG ──
@@ -121,34 +143,24 @@ window.toggleHora = function(chip) { chip.classList.toggle('activa'); };
 
 // ── PRECIOS ──
 window.cargarAdminPrecios = async function() {
-  Object.keys(PRECIOS_DEFAULT).forEach(k => {
-    const el = document.getElementById('ap-' + k);
-    if (el && !el.value) el.value = PRECIOS_DEFAULT[k];
-  });
+  Object.keys(PRECIOS_DEFAULT).forEach(k => { const el = document.getElementById('ap-' + k); if (el && !el.value) el.value = PRECIOS_DEFAULT[k]; });
   try {
     const snap = await getDoc(doc(db, 'config', 'precios'));
     const p = snap.exists() ? snap.data() : PRECIOS_DEFAULT;
-    Object.keys(PRECIOS_DEFAULT).forEach(k => {
-      const el = document.getElementById('ap-' + k);
-      if (el) el.value = p[k] || PRECIOS_DEFAULT[k];
-    });
+    Object.keys(PRECIOS_DEFAULT).forEach(k => { const el = document.getElementById('ap-' + k); if (el) el.value = p[k] || PRECIOS_DEFAULT[k]; });
   } catch (e) { console.warn('Precios load:', e); }
 };
 
 window.guardarPrecios = async function() {
   const precios = {};
-  Object.keys(PRECIOS_DEFAULT).forEach(k => {
-    const el = document.getElementById('ap-' + k);
-    if (el) precios[k] = Number(el.value) || PRECIOS_DEFAULT[k];
-  });
+  Object.keys(PRECIOS_DEFAULT).forEach(k => { const el = document.getElementById('ap-' + k); if (el) precios[k] = Number(el.value) || PRECIOS_DEFAULT[k]; });
   try { await setDoc(doc(db, 'config', 'precios'), precios); showOk('ok-precios'); }
   catch (e) { console.warn('Precios save:', e); }
 };
 
 // ── SERVICIOS ──
 window.cargarAdminServicios = async function() {
-  const cont = document.getElementById('svc-edit-list');
-  if (!cont) return;
+  const cont = document.getElementById('svc-edit-list'); if (!cont) return;
   _renderSvcAdmin(cont, serviciosEnMemoria);
   try {
     const snap = await getDoc(doc(db, 'config', 'servicios'));
@@ -159,8 +171,7 @@ window.cargarAdminServicios = async function() {
 function _renderSvcAdmin(cont, serviciosData) {
   cont.innerHTML = '';
   const btnNuevo = document.createElement('button');
-  btnNuevo.className = 'btn-nuevo-svc';
-  btnNuevo.textContent = '＋ Nuevo servicio';
+  btnNuevo.className = 'btn-nuevo-svc'; btnNuevo.textContent = '＋ Nuevo servicio';
   btnNuevo.onclick = () => window.abrirFormNuevoServicio();
   cont.appendChild(btnNuevo);
   const customKeys = serviciosData._custom || [];
@@ -177,14 +188,12 @@ function _renderSvcAdmin(cont, serviciosData) {
       const nombre = info.nombre || s.nombre;
       const imagen = info.imagen || null;
       const isBuiltin = !!SERVICIO_KEYS.find(k => k.id === s.id);
-      const card = document.createElement('div');
-      card.className = 'svc-edit-card';
+      const card = document.createElement('div'); card.className = 'svc-edit-card';
       const delBtn = document.createElement('button');
       delBtn.className = 'btn-del-svc'; delBtn.textContent = '✕ Eliminar';
       delBtn.onclick = () => window.eliminarServicio(s.id, isBuiltin);
       card.appendChild(delBtn);
-      const header = document.createElement('div');
-      header.className = 'svc-edit-card-header';
+      const header = document.createElement('div'); header.className = 'svc-edit-card-header';
       header.innerHTML = `<div class="svc-edit-img" id="svc-img-preview-${s.id}">${imagen ? `<img src="${imagen}" alt=""/>` : `<span>${s.emoji || '💅'}</span>`}</div>
         <label class="btn-img-svc">📷 Imagen<input type="file" accept="image/*" style="display:none" onchange="subirImagenServicio('${s.id}',this)"/></label>`;
       card.appendChild(header);
@@ -221,11 +230,11 @@ window.guardarServicios = async function() {
     allKeys.forEach(s => {
       const nameEl = document.getElementById('svc-name-' + s.id); if (!nameEl) return;
       servicios[s.id] = {
-        nombre:      nameEl.value.trim() || s.nombre,
-        precio:      Number(document.getElementById('svc-precio-' + s.id)?.value) || 0,
+        nombre: nameEl.value.trim() || s.nombre,
+        precio: Number(document.getElementById('svc-precio-' + s.id)?.value) || 0,
         descripcion: document.getElementById('svc-desc-' + s.id)?.value.trim() || '',
-        detalles:    document.getElementById('svc-det-' + s.id)?.value.trim() || '',
-        imagen:      window._svcImages[s.id] || existing[s.id]?.imagen || null,
+        detalles: document.getElementById('svc-det-' + s.id)?.value.trim() || '',
+        imagen: window._svcImages[s.id] || existing[s.id]?.imagen || null,
         emoji: s.emoji || '💅', cat: s.cat, desde: s.desde || false,
         hidden: existing[s.id]?.hidden || false
       };
@@ -250,13 +259,14 @@ window.guardarNuevoServicio = async function() {
   const id = 'custom_' + Date.now();
   const snap = await getDoc(doc(db, 'config', 'servicios'));
   const existing = snap.exists() ? snap.data() : {};
+  const cat = document.getElementById('ns-cat')?.value || '✨ Uñas';
   const customKeys = [...(existing._custom || [])];
-  customKeys.push({ id, nombre, cat: document.getElementById('ns-cat')?.value || '✨ Uñas', emoji: '💅', desde: false });
+  customKeys.push({ id, nombre, cat, emoji: '💅', desde: false });
   const newData = { ...existing, _custom: customKeys, [id]: {
     nombre, precio: Number(document.getElementById('ns-precio')?.value) || 0,
     descripcion: document.getElementById('ns-desc')?.value.trim() || '',
     detalles: document.getElementById('ns-detalles')?.value.trim() || '',
-    imagen: null, emoji: '💅', cat: customKeys[customKeys.length-1].cat, desde: false, hidden: false
+    imagen: null, emoji: '💅', cat, desde: false, hidden: false
   }};
   await setDoc(doc(db, 'config', 'servicios'), newData);
   serviciosEnMemoria = newData;
@@ -293,8 +303,7 @@ window.guardarLogo = async function(btn) {
   const b64 = btn.dataset.b64; if (!b64) return;
   try {
     const ref = doc(db, 'config', 'site');
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? snap.data() : {};
+    const snap = await getDoc(ref); const data = snap.exists() ? snap.data() : {};
     await setDoc(ref, { ...data, logo: b64 });
     document.querySelectorAll('.site-logo').forEach(el => el.src = b64);
     showOk('ok-logo');
@@ -349,32 +358,18 @@ export function renderGaleriaAdmin(fotos) {
 }
 
 // ══════════════════════════════════════════
-// ── PROMOCIONES — 100% Firebase Firestore ──
-// (sin Render, sin cold-start, instantáneo)
+// PROMOCIONES — Firebase Real (window.__db)
 // ══════════════════════════════════════════
-
-// Helper: lee array de promos del doc config/promociones
-async function getPromos() {
-  try {
-    const snap = await getDoc(doc(db, 'config', 'promociones'));
-    const d = snap.exists() ? snap.data() : {};
-    return Array.isArray(d.lista) ? d.lista : [];
-  } catch { return []; }
-}
-async function savePromos(lista) {
-  await setDoc(doc(db, 'config', 'promociones'), { lista });
-}
-
 window.cargarAdminPromociones = async function() {
   const lista = document.getElementById('promo-lista'); if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const promos = await getPromos();
+    const promos = await getArr('promociones');
     if (!promos.length) {
       lista.innerHTML = '<div class="no-citas">No hay promociones. ¡Crea la primera con el botón de arriba ☝️!</div>';
       return;
     }
-    lista.innerHTML = promos.slice().reverse().map(p => `
+    lista.innerHTML = [...promos].reverse().map(p => `
       <div class="cita-item">
         <div class="cita-item-header">
           <div class="cita-name">🎁 ${p.titulo}</div>
@@ -392,9 +387,7 @@ window.cargarAdminPromociones = async function() {
 };
 
 window.abrirFormPromo = function() {
-  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
+  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const ov = document.getElementById('overlay-nueva-promo');
   if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
 };
@@ -405,21 +398,20 @@ window.guardarPromocion = async function() {
   const btn = document.querySelector('#overlay-nueva-promo .btn-save');
   if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
   try {
-    const lista = await getPromos();
+    const lista = await getArr('promociones');
     lista.push({
-      id: Date.now().toString(),
-      titulo,
+      id: Date.now().toString(), titulo,
       descripcion: document.getElementById('promo-desc')?.value.trim() || '',
       descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
       fechainicio: document.getElementById('promo-inicio')?.value || '',
       fechafin:    document.getElementById('promo-fin')?.value || '',
-      activa: true,
-      creado: new Date().toISOString()
+      activa: true, creado: new Date().toISOString()
     });
-    await savePromos(lista);
+    await saveArr('promociones', lista);
     const ov = document.getElementById('overlay-nueva-promo');
     if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
     window.cargarAdminPromociones();
+    cargarPromosPublicas();
     showOk('ok-promos');
   } catch (e) { alert('❌ Error: ' + (e?.message || e)); }
   if (btn) { btn.textContent = '💾 Guardar promoción'; btn.disabled = false; }
@@ -428,55 +420,21 @@ window.guardarPromocion = async function() {
 window.eliminarPromocion = async function(id) {
   if (!confirm('¿Eliminar esta promoción?')) return;
   try {
-    const lista = await getPromos();
-    await savePromos(lista.filter(p => p.id !== id));
+    const lista = await getArr('promociones');
+    await saveArr('promociones', lista.filter(p => p.id !== id));
     window.cargarAdminPromociones();
+    cargarPromosPublicas();
   } catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
-// ── Render promos en homepage (llamado desde main.js) ──
-export async function cargarPromosPublicas() {
-  try {
-    const snap = await getDoc(doc(db, 'config', 'promociones'));
-    const d = snap.exists() ? snap.data() : {};
-    const promos = Array.isArray(d.lista) ? d.lista.filter(p => p.activa !== false) : [];
-    const grid = document.getElementById('promos-grid');
-    if (!grid || !promos.length) return;
-    const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
-    const colors = ['var(--rose)','var(--gold)','#4CAF50'];
-    grid.innerHTML = promos.slice().reverse().map((p, i) => `
-      <div class="promo-card reveal">
-        <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
-        <div class="promo-title">${p.titulo}</div>
-        <div class="promo-desc">${p.descripcion || ''}</div>
-        <div class="promo-precio"><span class="promo-ahora">${p.descuento || ''}</span></div>
-        ${p.fechafin ? `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${p.fechafin}</div>` : ''}
-        <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
-      </div>`).join('');
-  } catch(e) { /* silently fail, static promos remain */ }
-}
-
 // ══════════════════════════════════════════
-// ── RESEÑAS — 100% Firebase Firestore ──
-// (sin Render, sin cold-start, instantáneo)
+// RESEÑAS — Firebase Real (window.__db)
 // ══════════════════════════════════════════
-
-async function getResenas() {
-  try {
-    const snap = await getDoc(doc(db, 'config', 'resenas'));
-    const d = snap.exists() ? snap.data() : {};
-    return Array.isArray(d.lista) ? d.lista : [];
-  } catch { return []; }
-}
-async function saveResenas(lista) {
-  await setDoc(doc(db, 'config', 'resenas'), { lista });
-}
-
 window.cargarAdminResenas = async function() {
   const lista = document.getElementById('resenas-lista'); if (!lista) return;
   lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
   try {
-    const resenas = await getResenas();
+    const resenas = await getArr('resenas');
     if (!resenas.length) {
       lista.innerHTML = '<div class="no-citas">No hay reseñas aún. Aparecerán aquí cuando alguien envíe una desde la página.</div>';
       return;
@@ -486,7 +444,7 @@ window.cargarAdminResenas = async function() {
       ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">
         ⚠️ <strong>${pendientes} reseña${pendientes>1?'s':''} pendiente${pendientes>1?'s':''}</strong> — Apruébalas para que aparezcan en la web pública.
       </div>` : ''}
-      ${resenas.slice().reverse().map(r => `
+      ${[...resenas].reverse().map(r => `
       <div class="cita-item">
         <div class="cita-item-header">
           <div class="cita-name">⭐ ${'★'.repeat(r.estrellas||5)} ${r.nombre}</div>
@@ -508,11 +466,10 @@ window.cargarAdminResenas = async function() {
 
 window.aprobarResena = async function(id, estado) {
   try {
-    const lista = await getResenas();
+    const lista = await getArr('resenas');
     const idx = lista.findIndex(r => r.id === id);
-    if (idx !== -1) { lista[idx].aprobada = estado; await saveResenas(lista); }
+    if (idx !== -1) { lista[idx].aprobada = estado; await saveArr('resenas', lista); }
     window.cargarAdminResenas();
-    // Actualizar vista pública inmediatamente
     cargarResenasPublicas();
   } catch (e) { alert('Error: ' + (e?.message || e)); }
 };
@@ -520,22 +477,21 @@ window.aprobarResena = async function(id, estado) {
 window.eliminarResena = async function(id) {
   if (!confirm('¿Eliminar esta reseña?')) return;
   try {
-    const lista = await getResenas();
-    await saveResenas(lista.filter(r => r.id !== id));
+    const lista = await getArr('resenas');
+    await saveArr('resenas', lista.filter(r => r.id !== id));
     window.cargarAdminResenas();
     cargarResenasPublicas();
   } catch (e) { alert('Error: ' + (e?.message || e)); }
 };
 
-// ── Render reseñas en homepage ──
+// ── Reseñas públicas (homepage) ──
 export async function cargarResenasPublicas() {
   try {
-    const lista = await getResenas();
+    const lista = await getArr('resenas');
     const aprobadas = lista.filter(r => r.aprobada);
-    const grid = document.getElementById('resenas-grid');
-    if (!grid) return;
+    const grid = document.getElementById('resenas-grid'); if (!grid) return;
     if (!aprobadas.length) { grid.innerHTML = ''; return; }
-    grid.innerHTML = aprobadas.slice(-6).reverse().map(r => `
+    grid.innerHTML = [...aprobadas].slice(-6).reverse().map(r => `
       <div class="testimonio-card reveal">
         <div class="test-stars">${'★'.repeat(r.estrellas||5)}${'☆'.repeat(5-(r.estrellas||5))}</div>
         <p class="test-text">"${r.comentario}"</p>
@@ -547,7 +503,27 @@ export async function cargarResenasPublicas() {
   } catch(e) { /* silently fail */ }
 }
 
-// ── Enviar reseña pública — guarda en Firebase directamente ──
+// ── Promos públicas (homepage) ──
+export async function cargarPromosPublicas() {
+  try {
+    const promos = await getArr('promociones');
+    const activas = promos.filter(p => p.activa !== false);
+    const grid = document.getElementById('promos-grid'); if (!grid || !activas.length) return;
+    const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
+    const colors = ['var(--rose)','var(--gold)','#4CAF50'];
+    grid.innerHTML = [...activas].reverse().map((p, i) => `
+      <div class="promo-card reveal">
+        <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
+        <div class="promo-title">${p.titulo}</div>
+        <div class="promo-desc">${p.descripcion || ''}</div>
+        <div class="promo-precio"><span class="promo-ahora">${p.descuento || ''}</span></div>
+        ${p.fechafin ? `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${p.fechafin}</div>` : ''}
+        <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
+      </div>`).join('');
+  } catch(e) { /* silently fail */ }
+}
+
+// ── Enviar reseña pública ──
 window.enviarResena = async function(e) {
   e.preventDefault();
   const nombre     = document.getElementById('res-nombre')?.value.trim();
@@ -558,14 +534,9 @@ window.enviarResena = async function(e) {
   const btn = document.getElementById('btn-resena');
   btn.disabled = true; btn.textContent = '⏳ Enviando...';
   try {
-    const lista = await getResenas();
-    lista.push({
-      id: Date.now().toString(),
-      nombre, estrellas, servicio, comentario,
-      aprobada: false,
-      creado: new Date().toISOString()
-    });
-    await saveResenas(lista);
+    const lista = await getArr('resenas');
+    lista.push({ id: Date.now().toString(), nombre, estrellas, servicio, comentario, aprobada: false, creado: new Date().toISOString() });
+    await saveArr('resenas', lista);
     document.getElementById('resena-form').reset();
     const ok = document.getElementById('resena-ok');
     if (ok) { ok.style.display = 'block'; setTimeout(() => ok.style.display = 'none', 5000); }
