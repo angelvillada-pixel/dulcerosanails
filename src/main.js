@@ -17,6 +17,7 @@ window.cerrarOverlay = function(id) {
 };
 window.abrirLogin = async function() {
   try {
+    await initAdminAuthWatcher();
     const { auth } = await realAdminAuth();
     if (auth.currentUser) {
       openAdminPanel();
@@ -123,9 +124,10 @@ function normalizeCitaOverlayUi() {
 }
 
 async function realAdminAuth() {
-  if (window.__auth && window.__authApi) {
+  if (window.__ensureAuth && window.__authApi) {
+    const auth = window.__ensureAuth();
     await (window.__authReadyPromise || Promise.resolve());
-    return { auth: window.__auth, authApi: window.__authApi };
+    return { auth, authApi: window.__authApi };
   }
 
   return new Promise((resolve, reject) => {
@@ -136,9 +138,10 @@ async function realAdminAuth() {
       async () => {
         clearTimeout(timeoutId);
         try {
+          const auth = window.__ensureAuth ? window.__ensureAuth() : window.__auth;
           await (window.__authReadyPromise || Promise.resolve());
-          if (window.__auth && window.__authApi) {
-            resolve({ auth: window.__auth, authApi: window.__authApi });
+          if (auth && window.__authApi) {
+            resolve({ auth, authApi: window.__authApi });
             return;
           }
           reject(new Error('Firebase Auth no se inicializo correctamente.'));
@@ -184,6 +187,14 @@ function mapAuthError(error) {
     return 'No se pudo conectar con Firebase Auth. Revisa tu conexion.';
   }
 
+  if (code === 'auth/unauthorized-domain') {
+    return 'Este dominio no esta autorizado en Firebase Auth. Agrega dulcerosanails.pages.dev en Authorized domains.';
+  }
+
+  if (code === 'auth/configuration-not-found' || code === 'auth/operation-not-allowed') {
+    return 'Email/Password no esta activado en Firebase Authentication.';
+  }
+
   return error?.message || 'No se pudo iniciar sesion.';
 }
 
@@ -214,10 +225,10 @@ function openAdminPanel() {
 
 async function initAdminAuthWatcher() {
   if (adminAuthWatcherSet) return;
-  adminAuthWatcherSet = true;
 
   try {
     const { auth, authApi } = await realAdminAuth();
+    adminAuthWatcherSet = true;
     authApi.onAuthStateChanged(auth, (user) => {
       adminSessionUser = user || null;
       window.__adminUser = adminSessionUser;
@@ -227,6 +238,7 @@ async function initAdminAuthWatcher() {
       }
     });
   } catch (error) {
+    adminAuthWatcherSet = false;
     console.error('No se pudo inicializar Firebase Auth:', error);
     setAuthError('No se pudo inicializar el acceso admin. Revisa Firebase Auth.');
   }
@@ -686,7 +698,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   initReveal();
   actualizarSelectServicios();
-  initAdminAuthWatcher().catch(console.error);
   // Cargar promos y reseñas desde Firebase (instantáneo, sin Render)
   cargarPromosPublicas();
   cargarResenasPublicas();

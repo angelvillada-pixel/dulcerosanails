@@ -3,6 +3,10 @@
 // ══════════════════════════════════════════
 const API = 'https://dulce-rosa-api.onrender.com';
 const API_TIMEOUT_MS = 20000;
+const RENDER_WAKE_TIMEOUT_MS = 45000;
+const RENDER_WAKE_TTL_MS = 10 * 60 * 1000;
+let renderWakePromise = null;
+let renderLastReadyAt = 0;
 
 export function serverTimestamp() { return new Date().toISOString(); }
 export function arrayUnion(...items) { return { _t: 'union', items }; }
@@ -33,6 +37,14 @@ function normalizeApiError(error) {
 }
 
 async function api(method, url, body, timeoutMs = API_TIMEOUT_MS) {
+  if (url !== '/') await ensureRenderAwake();
+
+  const data = await rawApi(method, url, body, timeoutMs);
+  renderLastReadyAt = Date.now();
+  return data;
+}
+
+async function rawApi(method, url, body, timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const opts = { method, headers: { 'Content-Type': 'application/json' }, signal: controller.signal };
@@ -50,6 +62,21 @@ async function api(method, url, body, timeoutMs = API_TIMEOUT_MS) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function ensureRenderAwake() {
+  if (Date.now() - renderLastReadyAt < RENDER_WAKE_TTL_MS) return;
+  if (renderWakePromise) return renderWakePromise;
+
+  renderWakePromise = rawApi('GET', '/', undefined, RENDER_WAKE_TIMEOUT_MS)
+    .then(() => {
+      renderLastReadyAt = Date.now();
+    })
+    .finally(() => {
+      renderWakePromise = null;
+    });
+
+  return renderWakePromise;
 }
 
 export async function getDoc(ref) {

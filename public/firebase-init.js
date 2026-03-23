@@ -28,10 +28,18 @@ window.__db = initializeFirestore(app, {
   useFetchStreams: false
 });
 
-window.__auth = getAuth(app);
-window.__authReadyPromise = setPersistence(window.__auth, browserLocalPersistence).catch((error) => {
-  console.error('No se pudo activar la persistencia de Firebase Auth:', error);
-});
+window.__auth = null;
+window.__authReadyPromise = Promise.resolve();
+window.__ensureAuth = () => {
+  if (window.__auth) return window.__auth;
+
+  window.__auth = getAuth(app);
+  window.__authReadyPromise = setPersistence(window.__auth, browserLocalPersistence).catch((error) => {
+    console.error('No se pudo activar la persistencia de Firebase Auth:', error);
+  });
+
+  return window.__auth;
+};
 
 window.__fb = {
   collection, doc, getDoc, setDoc, addDoc,
