@@ -1,19 +1,27 @@
 import { LOGO } from './assets/logo.js';
 import { db, collection, doc, getDoc, setDoc, addDoc, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
 import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen, to12h } from './data.js';
-import { renderGaleriaPublica } from './galeria.js';
+import { renderGaleriaPublica, renderGaleriaSkeleton } from './galeria.js';
 import { renderGaleriaAdmin, cargarPromosPublicas, cargarResenasPublicas } from './admin.js';
 
 // ── GLOBAL FUNCTIONS — defined immediately so HTML onclicks work ──
+function syncBodyOverflowFromOverlays() {
+  document.body.style.overflow = document.querySelector('.overlay.show') ? 'hidden' : '';
+}
+
 window.abrirOverlay = function(id) {
   const el = document.getElementById(id);
   if (id === 'overlay-cita') normalizeCitaOverlayUi();
-  if (el) { el.classList.add('show'); document.body.style.overflow = 'hidden'; }
+  if (el) { el.classList.add('show'); syncBodyOverflowFromOverlays(); }
 };
 window.cerrarOverlay = function(id) {
   const el = document.getElementById(id);
+  if (id === 'overlay-confirm' && typeof window.resolverConfirmacion === 'function') {
+    window.resolverConfirmacion(false);
+    return;
+  }
   if (id === 'overlay-cita') normalizeCitaOverlayUi();
-  if (el) { el.classList.remove('show'); document.body.style.overflow = ''; }
+  if (el) { el.classList.remove('show'); syncBodyOverflowFromOverlays(); }
 };
 window.abrirLogin = async function() {
   try {
@@ -37,9 +45,11 @@ window.abrirLogin = async function() {
 window._horasDisponibles = [...HORAS_DEFAULT];
 let horaSeleccionada = null;
 let unsubSlots = null;
+let unsubTodayAvailability = null;
 let citaSubmitInFlight = false;
 let adminAuthWatcherSet = false;
 let adminSessionUser = null;
+let confirmResolver = null;
 
 document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
 setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=LOGO; },200);
@@ -83,6 +93,80 @@ function formatRenderIssue(scope, error) {
   return `${scope}: ${detail}`;
 }
 
+function readSessionCache(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(`dulce-rosa:${key}`);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSessionCache(key, value) {
+  try {
+    sessionStorage.setItem(`dulce-rosa:${key}`, JSON.stringify(value));
+  } catch {}
+}
+
+function ensureAppToastRoot() {
+  let root = document.getElementById('app-toast-stack');
+  if (root) return root;
+
+  root = document.createElement('div');
+  root.id = 'app-toast-stack';
+  root.className = 'app-toast-stack';
+  document.body.appendChild(root);
+  return root;
+}
+
+window.showAppToast = function(message, type = 'info') {
+  if (!message) return;
+
+  const root = ensureAppToastRoot();
+  const toast = document.createElement('div');
+  toast.className = `app-toast${type === 'error' ? ' error' : ''}`;
+  toast.textContent = message;
+  root.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 220);
+  }, 4200);
+};
+
+window.confirmAction = function(message, confirmLabel = 'Confirmar') {
+  const overlay = document.getElementById('overlay-confirm');
+  const messageEl = document.getElementById('confirm-message');
+  const acceptBtn = document.getElementById('confirm-accept-btn');
+
+  if (!overlay || !messageEl || !acceptBtn) {
+    return Promise.resolve(window.confirm(message));
+  }
+
+  messageEl.textContent = message;
+  acceptBtn.textContent = confirmLabel;
+  overlay.classList.add('show');
+  syncBodyOverflowFromOverlays();
+
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+  });
+};
+
+window.resolverConfirmacion = function(accepted) {
+  const overlay = document.getElementById('overlay-confirm');
+  if (overlay) overlay.classList.remove('show');
+  syncBodyOverflowFromOverlays();
+
+  if (confirmResolver) {
+    const resolve = confirmResolver;
+    confirmResolver = null;
+    resolve(Boolean(accepted));
+  }
+};
+
 function setBusyButton(button, busyLabel) {
   if (!button) return () => {};
 
@@ -121,6 +205,32 @@ function normalizeCitaOverlayUi() {
     waBtn.style.display = 'none';
     waBtn.href = '#';
   }
+}
+
+function updateTodayAvailabilityChip(booked = []) {
+  const chip = document.getElementById('hero-turnos-chip');
+  if (!chip) return;
+
+  const total = (window._horasDisponibles || HORAS_DEFAULT).length;
+  const disponibles = Math.max(total - booked.length, 0);
+  const busy = disponibles <= 0;
+  chip.dataset.state = busy ? 'busy' : 'open';
+  chip.innerHTML = `<span class="chip-dot" style="background:${busy ? '#ff8a65' : '#4CAF50'}"></span>${busy ? 'Agenda para otro dia' : `${disponibles} turnos hoy`}`;
+}
+
+function watchTodayAvailability() {
+  if (unsubTodayAvailability) unsubTodayAvailability();
+
+  unsubTodayAvailability = onSnapshot(
+    doc(db, 'slots', fechaHoyColombia()),
+    (snap) => {
+      const booked = snap.exists() ? (snap.data().booked || []) : [];
+      updateTodayAvailabilityChip(booked);
+    },
+    () => {
+      updateTodayAvailabilityChip([]);
+    },
+  );
 }
 
 async function realAdminAuth() {
@@ -278,7 +388,7 @@ function renderServicios(serviciosData={}, preciosData={}) {
             onclick="handleCardTap(this)">
             <div class="service-card-img-wrap">
               ${imagen
-                ? `<img src="${imagen}" alt="${nombre}" loading="lazy"/>`
+                ? `<img src="${imagen}" alt="${nombre}" loading="lazy" decoding="async"/>`
                 : `<div class="service-card-emoji">${s.emoji||'💅'}</div>`}
             </div>
             <div class="service-card-body">
@@ -288,6 +398,7 @@ function renderServicios(serviciosData={}, preciosData={}) {
             </div>
             <div class="service-card-actions">
               <button class="svc-btn svc-btn-detalles" onclick="event.stopPropagation();abrirDetalles(this.closest('.service-card'))">Ver detalles</button>
+              <button class="svc-btn svc-btn-share" onclick="event.stopPropagation();compartirServicio(decodeURIComponent(this.closest('.service-card').dataset.nombre), this.closest('.service-card').dataset.precio, decodeURIComponent(this.closest('.service-card').dataset.cat))">Compartir WhatsApp</button>
               <button class="svc-btn svc-btn-agendar" onclick="event.stopPropagation();abrirCitaConServicio(decodeURIComponent(this.closest('.service-card').dataset.nombre))">Agendar cita</button>
             </div>
           </div>`;
@@ -323,6 +434,8 @@ window.abrirDetalles = function(card) {
   document.getElementById('det-desc').textContent   = desc;
   document.getElementById('det-detalles').textContent = detalles;
   document.getElementById('det-nombre-btn').textContent = `Agendar — ${nombre}`;
+  const shareBtn = document.getElementById('det-share-btn');
+  if (shareBtn) shareBtn.onclick = () => window.compartirServicio(nombre, precio, cat);
 
   const imgEl = document.getElementById('det-img');
   const emojiEl = document.getElementById('det-emoji');
@@ -349,55 +462,85 @@ window.abrirCitaConServicio = function(nombre) {
   }, 300);
 };
 
+window.compartirServicio = function(nombre, precio, categoria) {
+  const texto = encodeURIComponent(
+    `Hola, mira este servicio de Dulce Rosa Nails Spa:\n\n${nombre}\nCategoria: ${categoria}\nPrecio: ${formatCOP(Number(precio || 0))}\n\nhttps://dulcerosanails.pages.dev/#servicios`,
+  );
+  window.open(`https://wa.me/?text=${texto}`, '_blank', 'noopener');
+  window.showAppToast?.(`Enlace de ${nombre} listo para compartir.`, 'success');
+};
+
 // ── LISTENERS ──
 let preciosActuales = {...PRECIOS_DEFAULT};
 let serviciosActuales = {};
 
-renderServicios({}, PRECIOS_DEFAULT);
+const cachedSiteConfig = readSessionCache('site', null);
+const cachedPrecios = readSessionCache('precios', PRECIOS_DEFAULT);
+const cachedServicios = readSessionCache('servicios', {});
+const cachedGaleria = readSessionCache('galeria', []);
+
+if (cachedSiteConfig?.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=cachedSiteConfig.logo);
+if (cachedSiteConfig?.nequi) document.querySelectorAll('.nequi-num').forEach(el=>el.textContent=cachedSiteConfig.nequi);
+if (Array.isArray(cachedSiteConfig?.horarios) && cachedSiteConfig.horarios.length) window._horasDisponibles = cachedSiteConfig.horarios;
+
+preciosActuales = {...PRECIOS_DEFAULT, ...(cachedPrecios || {})};
+serviciosActuales = cachedServicios || {};
+
+renderServicios(serviciosActuales, preciosActuales);
 actualizarSelectServicios();
+watchTodayAvailability();
+
+if (Array.isArray(cachedGaleria) && cachedGaleria.length) {
+  renderGaleriaPublica(cachedGaleria);
+  renderGaleriaAdmin(cachedGaleria);
+} else {
+  renderGaleriaSkeleton();
+}
 
 onSnapshot(doc(db,'config','site'), snap => {
-  clearRuntimeIssue('site');
   if (!snap.exists()) return;
   const d = snap.data();
+  writeSessionCache('site', d);
   if (d.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=d.logo);
   if (d.nequi) document.querySelectorAll('.nequi-num').forEach(el=>el.textContent=d.nequi);
   if (d.horarios) {
     window._horasDisponibles = d.horarios.length ? d.horarios : [...HORAS_DEFAULT];
+    watchTodayAvailability();
     const fecha = document.getElementById('inp-fecha')?.value;
     if (fecha) window.cargarSlots();
   }
 }, error => {
-  setRuntimeIssue('site', formatRenderIssue('Configuracion', error));
+  console.warn('Configuracion:', error);
 });
 
 onSnapshot(doc(db,'config','precios'), snap => {
-  clearRuntimeIssue('precios');
   if (!snap.exists()) return;
+  writeSessionCache('precios', snap.data());
   preciosActuales = {...PRECIOS_DEFAULT, ...snap.data()};
   renderServicios(serviciosActuales, preciosActuales);
   actualizarSelectServicios();
+  updateTodayAvailabilityChip([]);
 }, error => {
-  setRuntimeIssue('precios', formatRenderIssue('Precios', error));
+  console.warn('Precios:', error);
 });
 
 onSnapshot(doc(db,'config','servicios'), snap => {
-  clearRuntimeIssue('servicios');
   if (!snap.exists()) return;
+  writeSessionCache('servicios', snap.data());
   serviciosActuales = snap.data();
   renderServicios(serviciosActuales, preciosActuales);
   actualizarSelectServicios();
 }, error => {
-  setRuntimeIssue('servicios', formatRenderIssue('Servicios', error));
+  console.warn('Servicios:', error);
 });
 
 onSnapshot(collection(db,'galeria'), snap => {
-  clearRuntimeIssue('galeria');
   const fotos = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.orden||0)-(b.orden||0));
+  writeSessionCache('galeria', fotos);
   renderGaleriaPublica(fotos);
   renderGaleriaAdmin(fotos);
 }, error => {
-  setRuntimeIssue('galeria', formatRenderIssue('Galeria', error));
+  console.warn('Galeria:', error);
 });
 
 function actualizarSelectServicios() {
@@ -667,7 +810,7 @@ window.cerrarSesionAdmin = async function() {
     cerrarOverlay('overlay-admin');
     setAuthError('');
   } catch (error) {
-    alert(mapAuthError(error));
+    window.showAppToast?.(mapAuthError(error), 'error');
   }
 };
 
@@ -686,8 +829,12 @@ function initReveal() {
 
 document.addEventListener('DOMContentLoaded',()=>{
   const fi=document.getElementById('inp-fecha');
+  const scrollTopBtn = document.getElementById('scroll-top-btn');
   if(fi) fi.min=fechaHoyColombia();
-  window.addEventListener('scroll',()=>document.getElementById('navbar').classList.toggle('scrolled',scrollY>40));
+  window.addEventListener('scroll',()=>{
+    document.getElementById('navbar').classList.toggle('scrolled',scrollY>40);
+    if (scrollTopBtn) scrollTopBtn.classList.toggle('show', scrollY > 300);
+  });
   document.getElementById('auth-user')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.verificarCredenciales();});
   document.getElementById('auth-pass')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.verificarCredenciales();});
   document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)cerrarOverlay(o.id);}));
@@ -696,8 +843,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.addEventListener('click',e=>{
     if(!e.target.closest('.service-card')) document.querySelectorAll('.service-card.tapped').forEach(c=>c.classList.remove('tapped'));
   });
+  scrollTopBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
   initReveal();
   actualizarSelectServicios();
+  updateTodayAvailabilityChip([]);
   // Cargar promos y reseñas desde Firebase (instantáneo, sin Render)
   cargarPromosPublicas();
   cargarResenasPublicas();

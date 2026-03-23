@@ -7,6 +7,7 @@ import {
   addDoc,
   getDocs,
   deleteDoc,
+  onSnapshot,
   updateDoc,
   arrayRemove,
   serverTimestamp,
@@ -21,6 +22,7 @@ const PROMOS_COLLECTION = 'promociones';
 const RESENAS_COLLECTION = 'resenas';
 
 const realtimeState = {
+  citas: { items: [], loading: false, error: null, unsubscribe: null, initialized: false, limit: 20, filter: 'all' },
   promosAdmin: { items: [], loading: false, error: null, unsubscribe: null },
   promosPublic: { items: [], loading: false, error: null, unsubscribe: null },
   resenasAdmin: { items: [], loading: false, error: null, unsubscribe: null },
@@ -129,6 +131,134 @@ function showAdminError(tabId, message) {
   }
 
   box.textContent = message;
+}
+
+function showAdminToast(message, type = 'info') {
+  if (window.showAppToast) {
+    window.showAppToast(message, type);
+    return;
+  }
+  console[type === 'error' ? 'error' : 'log'](message);
+}
+
+function debounce(fn, wait = 300) {
+  let timeoutId = null;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), wait);
+  };
+}
+
+function todayIso() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+function currentMonthPrefix() {
+  return todayIso().slice(0, 7);
+}
+
+function serviceLabel(value = '') {
+  return value.split(/\s[—-]\s/)[0].trim() || 'Sin servicio';
+}
+
+function escapeCsv(value = '') {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function citasFiltradas() {
+  const state = realtimeState.citas;
+  const q = (document.getElementById('filtro-citas')?.value || '').trim().toLowerCase();
+  const activeFilter = document.getElementById('filtro-fecha-citas')?.value || state.filter;
+  const today = todayIso();
+  const monthPrefix = currentMonthPrefix();
+  const weekEnd = new Date(`${today}T00:00:00-05:00`);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndIso = weekEnd.toISOString().slice(0, 10);
+
+  return [...state.items]
+    .filter((cita) => {
+      if (activeFilter === 'today' && cita.fecha !== today) return false;
+      if (activeFilter === 'week' && (cita.fecha < today || cita.fecha > weekEndIso)) return false;
+      if (activeFilter === 'month' && !String(cita.fecha || '').startsWith(monthPrefix)) return false;
+      if (!q) return true;
+
+      return (
+        cita.nombre?.toLowerCase().includes(q) ||
+        cita.servicio?.toLowerCase().includes(q) ||
+        cita.fecha?.includes(q) ||
+        cita.tel?.includes(q)
+      );
+    })
+    .sort((left, right) => `${left.fecha}${left.hora}`.localeCompare(`${right.fecha}${right.hora}`));
+}
+
+function renderCitasStats(citas) {
+  const monthPrefix = currentMonthPrefix();
+  const citasMes = citas.filter((cita) => String(cita.fecha || '').startsWith(monthPrefix));
+  const servicioCounts = new Map();
+  const dayCounts = new Map();
+
+  citasMes.forEach((cita) => {
+    const servicio = serviceLabel(cita.servicio);
+    servicioCounts.set(servicio, (servicioCounts.get(servicio) || 0) + 1);
+    dayCounts.set(cita.fecha, (dayCounts.get(cita.fecha) || 0) + 1);
+  });
+
+  const topServiceEntry = [...servicioCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const topDayEntry = [...dayCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+
+  const statTotal = document.getElementById('stat-total');
+  const statHoy = document.getElementById('stat-hoy');
+  const statProx = document.getElementById('stat-prox');
+
+  if (statTotal) {
+    statTotal.textContent = citasMes.length;
+    statTotal.nextElementSibling.textContent = 'Citas del mes';
+  }
+
+  if (statHoy) {
+    statHoy.textContent = topServiceEntry?.[1] || 0;
+    statHoy.nextElementSibling.textContent = topServiceEntry?.[0] || 'Sin datos';
+  }
+
+  if (statProx) {
+    statProx.textContent = topDayEntry?.[1] || 0;
+    statProx.nextElementSibling.textContent = topDayEntry?.[0] || 'Sin datos';
+  }
+}
+
+function ensureCitasListener() {
+  const state = realtimeState.citas;
+  if (state.unsubscribe || state.loading) return;
+
+  state.loading = true;
+  state.error = null;
+
+  state.unsubscribe = onSnapshot(
+    collection(db, 'citas'),
+    (snap) => {
+      const nextItems = snap.docs.map((item) => ({ ...item.data(), id: item.id }));
+      const prevIds = new Set(state.items.map((item) => item.id));
+      const newItems = nextItems.filter((item) => !prevIds.has(item.id));
+      state.items = nextItems;
+      state.loading = false;
+      state.error = null;
+      const wasInitialized = state.initialized;
+      state.initialized = true;
+      renderCitasStats(nextItems);
+      window.renderCitas();
+
+      if (wasInitialized && newItems.length && document.getElementById('overlay-admin')?.classList.contains('show')) {
+        const latest = newItems.sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`))[0];
+        showAdminToast(`Nueva cita: ${latest.nombre || 'Cliente'} - ${to12h(latest.hora)}`, 'success');
+      }
+    },
+    (error) => {
+      state.loading = false;
+      state.error = formatError(error, 'No se pudieron cargar las citas.');
+      window.renderCitas();
+    },
+  );
 }
 
 export function showOk(id) {
@@ -666,13 +796,19 @@ window.guardarFoto = async function () {
 };
 
 window.eliminarFoto = async function (id) {
-  if (!confirm('Eliminar esta foto?')) return;
+  const titulo = document.querySelector(`.galeria-admin-item .del-foto[onclick="eliminarFoto('${id}')"]`)?.closest('.galeria-admin-item')?.querySelector('.g-item-label')?.textContent || 'esta foto';
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar ${titulo}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar ${titulo}?`)));
+  if (!accepted) return;
 
   try {
     await deleteDoc(doc(db, 'galeria', id));
     clearAdminError('galeria');
+    showAdminToast(`${titulo} fue eliminada.`, 'success');
   } catch (error) {
     showAdminError('galeria', formatError(error, 'No se pudo eliminar la foto.'));
+    showAdminToast(`No se pudo eliminar ${titulo}.`, 'error');
   }
 };
 
@@ -888,7 +1024,8 @@ function renderPromosPublicGrid() {
   }
 
   if (state.error) {
-    grid.innerHTML = publicErrorCard(`No se pudieron cargar las promociones: ${state.error}`, true);
+    console.warn('Promociones publicas:', state.error);
+    grid.innerHTML = '';
     return;
   }
 
@@ -979,7 +1116,8 @@ function renderResenasPublicGrid() {
   }
 
   if (state.error) {
-    grid.innerHTML = publicErrorCard(`No se pudieron cargar las resenas: ${state.error}`);
+    console.warn('Resenas publicas:', state.error);
+    grid.innerHTML = '';
     return;
   }
 
@@ -1174,6 +1312,393 @@ window.enviarResena = async function (e) {
     realtimeState.resenasPublic.error = message;
     renderResenasPublicGrid();
     alert(`Error al enviar la resena: ${message}`);
+  } finally {
+    restoreButton();
+  }
+};
+
+function initAdminFilters() {
+  const searchInput = document.getElementById('filtro-citas');
+  if (searchInput && !searchInput.dataset.bound) {
+    searchInput.dataset.bound = 'true';
+    searchInput.addEventListener('input', () => window.debouncedRenderCitas());
+  }
+
+  const dateSelect = document.getElementById('filtro-fecha-citas');
+  if (dateSelect && !dateSelect.dataset.bound) {
+    dateSelect.dataset.bound = 'true';
+    dateSelect.addEventListener('change', () => {
+      realtimeState.citas.filter = dateSelect.value;
+      realtimeState.citas.limit = 20;
+      window.renderCitas();
+    });
+  }
+}
+
+
+window.debouncedRenderCitas = debounce(() => {
+  realtimeState.citas.limit = 20;
+  window.renderCitas();
+}, 300);
+
+window.setCitasFilter = function (filter) {
+  realtimeState.citas.filter = filter;
+  realtimeState.citas.limit = 20;
+  const dateSelect = document.getElementById('filtro-fecha-citas');
+  if (dateSelect) dateSelect.value = filter;
+  document.querySelectorAll('.filter-chip').forEach((button) => {
+    button.classList.toggle('active', button.dataset.filter === filter);
+  });
+  window.renderCitas();
+};
+
+window.cargarMasCitas = function () {
+  realtimeState.citas.limit += 20;
+  window.renderCitas();
+};
+
+window.renderCitas = async function () {
+  const lista = document.getElementById('lista-citas');
+  if (!lista) return;
+
+  initAdminFilters();
+  ensureCitasListener();
+  const state = realtimeState.citas;
+
+  if (state.loading && !state.initialized) {
+    lista.innerHTML = '<div class="no-citas"><span class="spin">...</span> Cargando...</div>';
+    return;
+  }
+
+  if (state.error) {
+    showAdminError('citas', state.error);
+    lista.innerHTML = showStateMessage(state.error, true);
+    return;
+  }
+
+  clearAdminError('citas');
+  renderCitasStats(state.items);
+
+  const filtradas = citasFiltradas();
+  if (!filtradas.length) {
+    lista.innerHTML = '<div class="no-citas">No hay citas para ese filtro.</div>';
+    return;
+  }
+
+  const visibles = filtradas.slice(0, state.limit);
+  lista.innerHTML =
+    visibles
+      .map(
+        (cita) => `
+          <div class="cita-item">
+            <div class="cita-item-header">
+              <div class="cita-name">Cliente: ${escapeHtml(cita.nombre || 'Sin nombre')}</div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <span class="cita-badge">${escapeHtml(cita.fecha || '')} · ${to12h(cita.hora)}</span>
+                <button class="btn-delete" onclick="eliminarCita('${cita.id}','${escapeHtml(cita.fecha || '')}','${escapeHtml(cita.hora || '')}','${escapeHtml(cita.nombre || 'esta clienta')}')">Eliminar</button>
+              </div>
+            </div>
+            <div class="cita-details">
+              <div>Tel: ${escapeHtml(cita.tel || '')}</div>
+              <div>Servicio: ${escapeHtml(serviceLabel(cita.servicio))}</div>
+              ${cita.nota ? `<div style="grid-column:span 2">Nota: ${escapeHtml(cita.nota)}</div>` : ''}
+            </div>
+          </div>
+        `,
+      )
+      .join('') +
+    (filtradas.length > visibles.length
+      ? `<button class="btn-export btn-load-more" onclick="cargarMasCitas()">Cargar 20 mas</button>`
+      : '');
+};
+
+window.eliminarCita = async function (id, fecha, hora, nombre = 'esta clienta') {
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar la cita de ${nombre}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar la cita de ${nombre}?`)));
+  if (!accepted) return;
+
+  try {
+    await deleteDoc(doc(db, 'citas', id));
+    showAdminToast(`Cita de ${nombre} eliminada.`, 'success');
+    try {
+      await updateDoc(doc(db, 'slots', fecha), { booked: arrayRemove(hora) });
+    } catch (error) {
+      showAdminError('citas', formatError(error, 'La cita se elimino, pero no se pudo liberar el horario.'));
+    }
+  } catch (error) {
+    showAdminError('citas', formatError(error, 'No se pudo eliminar la cita.'));
+    showAdminToast(`No se pudo eliminar la cita de ${nombre}.`, 'error');
+  }
+};
+
+window.exportarCitas = async function () {
+  const citas = [...realtimeState.citas.items];
+  if (!citas.length) {
+    showAdminToast('No hay citas para exportar.', 'info');
+    return;
+  }
+
+  const rows = [
+    ['Nombre', 'Telefono', 'Servicio', 'Fecha', 'Hora_24h', 'Hora_12h', 'Nota', 'Creado'],
+    ...citas
+      .sort((left, right) => `${left.fecha}${left.hora}`.localeCompare(`${right.fecha}${right.hora}`))
+      .map((cita) => [
+        cita.nombre || '',
+        cita.tel || '',
+        serviceLabel(cita.servicio),
+        cita.fecha || '',
+        cita.hora || '',
+        to12h(cita.hora || ''),
+        cita.nota || '',
+        cita.creado || '',
+      ]),
+  ];
+
+  const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  link.download = `citas-dulce-rosa-${todayIso()}.csv`;
+  link.click();
+  showAdminToast('CSV exportado.', 'success');
+};
+
+window.guardarNuevoServicio = async function () {
+  const nombre = document.getElementById('ns-nombre')?.value.trim();
+  if (!nombre) {
+    showAdminToast('El nombre del servicio es obligatorio.', 'error');
+    return;
+  }
+
+  const restoreButton = setBusyButton(document.querySelector('#overlay-nuevo-svc .btn-save'), 'Guardando...');
+
+  try {
+    const id = `custom_${Date.now()}`;
+    const snap = await getDoc(doc(db, 'config', 'servicios'));
+    const existing = snap.exists() ? snap.data() : {};
+    const cat = document.getElementById('ns-cat')?.value || 'Uñas';
+    const customKeys = [...(existing._custom || [])];
+
+    customKeys.push({ id, nombre, cat, emoji: 'N', desde: false });
+
+    const newData = {
+      ...existing,
+      _custom: customKeys,
+      [id]: {
+        nombre,
+        precio: Number(document.getElementById('ns-precio')?.value) || 0,
+        descripcion: document.getElementById('ns-desc')?.value.trim() || '',
+        detalles: document.getElementById('ns-detalles')?.value.trim() || '',
+        imagen: null,
+        emoji: 'N',
+        cat,
+        desde: false,
+        hidden: false,
+      },
+    };
+
+    await setDoc(doc(db, 'config', 'servicios'), newData);
+    serviciosEnMemoria = newData;
+    clearAdminError('servicios');
+
+    document.getElementById('overlay-nuevo-svc')?.classList.remove('show');
+    document.body.style.overflow = '';
+
+    const cont = document.getElementById('svc-edit-list');
+    if (cont) _renderSvcAdmin(cont, newData);
+    showOk('ok-servicios');
+    showAdminToast(`Servicio "${nombre}" creado.`, 'success');
+  } catch (error) {
+    showAdminError('servicios', formatError(error, 'No se pudo crear el servicio.'));
+    showAdminToast('No se pudo crear el servicio.', 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
+window.eliminarServicio = async function (id, isBuiltin, nombre = '') {
+  const resolvedName =
+    nombre ||
+    document.getElementById(`svc-name-${id}`)?.value.trim() ||
+    serviciosEnMemoria[id]?.nombre ||
+    'este servicio';
+
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(isBuiltin ? `Ocultar ${resolvedName}?` : `Eliminar ${resolvedName}?`, isBuiltin ? 'Ocultar' : 'Eliminar')
+    : Promise.resolve(confirm(isBuiltin ? `Ocultar ${resolvedName}?` : `Eliminar ${resolvedName}?`)));
+  if (!accepted) return;
+
+  try {
+    const snap = await getDoc(doc(db, 'config', 'servicios'));
+    const existing = snap.exists() ? snap.data() : {};
+    const customKeys = (existing._custom || []).filter((item) => item.id !== id);
+    const newData = { ...existing, _custom: customKeys };
+
+    if (isBuiltin) newData[id] = { ...(existing[id] || {}), hidden: true };
+    else delete newData[id];
+
+    await setDoc(doc(db, 'config', 'servicios'), newData);
+    serviciosEnMemoria = newData;
+    clearAdminError('servicios');
+
+    const cont = document.getElementById('svc-edit-list');
+    if (cont) _renderSvcAdmin(cont, newData);
+    showAdminToast(`${resolvedName} fue eliminado.`, 'success');
+  } catch (error) {
+    showAdminError('servicios', formatError(error, 'No se pudo eliminar el servicio.'));
+    showAdminToast(`No se pudo eliminar ${resolvedName}.`, 'error');
+  }
+};
+
+window.guardarPromocion = async function () {
+  const titulo = document.getElementById('promo-titulo')?.value.trim();
+  if (!titulo) {
+    showAdminToast('El titulo de la promocion es obligatorio.', 'error');
+    return;
+  }
+
+  const restoreButton = setBusyButton(document.querySelector('#overlay-nueva-promo .btn-save'), 'Guardando...');
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.addDoc(fb.collection(rdb, PROMOS_COLLECTION), {
+      titulo,
+      descripcion: document.getElementById('promo-desc')?.value.trim() || '',
+      descuento: document.getElementById('promo-descuento')?.value.trim() || '',
+      fechafin: document.getElementById('promo-fin')?.value || '',
+      activa: true,
+      creado: fb.serverTimestamp(),
+      creadoMs: Date.now(),
+    });
+
+    document.getElementById('overlay-nueva-promo')?.classList.remove('show');
+    document.body.style.overflow = '';
+    realtimeState.promosAdmin.error = null;
+    realtimeState.promosPublic.error = null;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showOk('ok-promos');
+    showAdminToast(`Promocion "${titulo}" guardada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo guardar la promocion.');
+    realtimeState.promosAdmin.error = message;
+    realtimeState.promosPublic.error = message;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showAdminToast(message, 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
+window.eliminarPromocion = async function (id) {
+  const titulo = realtimeState.promosAdmin.items.find((item) => item.id === id)?.titulo || 'esta promocion';
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar ${titulo}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar ${titulo}?`)));
+  if (!accepted) return;
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, PROMOS_COLLECTION, id));
+    showAdminToast(`Promocion "${titulo}" eliminada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la promocion.');
+    realtimeState.promosAdmin.error = message;
+    realtimeState.promosPublic.error = message;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.aprobarResena = async function (id, estado) {
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || 'la resena';
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.updateDoc(fb.doc(rdb, RESENAS_COLLECTION, id), {
+      aprobada: estado,
+      actualizadoMs: Date.now(),
+    });
+    showAdminToast(
+      estado ? `Reseña de ${nombre} publicada.` : `Reseña de ${nombre} devuelta a pendiente.`,
+      'success',
+    );
+  } catch (error) {
+    const message = formatError(error, 'No se pudo actualizar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.eliminarResena = async function (id) {
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || 'esta reseña';
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar la reseña de ${nombre}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar la reseña de ${nombre}?`)));
+  if (!accepted) return;
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    showAdminToast(`Reseña de ${nombre} eliminada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.enviarResena = async function (e) {
+  e.preventDefault();
+
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = Number(document.getElementById('res-estrellas')?.value) || 5;
+  const servicio = document.getElementById('res-servicio')?.value.trim() || '';
+  const comentario = document.getElementById('res-comentario')?.value.trim();
+
+  if (!nombre || !comentario) {
+    showAdminToast('Nombre y comentario son obligatorios.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-resena');
+  const restoreButton = setBusyButton(btn, 'Enviando...');
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
+      nombre,
+      estrellas,
+      servicio,
+      comentario,
+      aprobada: false,
+      creado: fb.serverTimestamp(),
+      creadoMs: Date.now(),
+    });
+
+    realtimeState.resenasAdmin.error = null;
+    document.getElementById('resena-form')?.reset();
+    const ok = document.getElementById('resena-ok');
+    if (ok) {
+      ok.style.display = 'block';
+      setTimeout(() => {
+        ok.style.display = 'none';
+      }, 5000);
+    }
+    showAdminToast('Reseña enviada. Quedó pendiente de aprobación.', 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo enviar la resena.');
+    realtimeState.resenasPublic.error = message;
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
   } finally {
     restoreButton();
   }

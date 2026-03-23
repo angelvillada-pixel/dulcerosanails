@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="Dulce Rosa Nails Spa en Castilla, Medellin. Agenda tu cita, explora la galeria, descubre promociones y comparte tus servicios favoritos."/>
+  <meta property="og:title" content="Dulce Rosa Nails Spa"/>
+  <meta property="og:description" content="Nail spa en Castilla, Medellin. Citas, promociones, galeria y resenas en tiempo real."/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://dulcerosanails.pages.dev/"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <title>Dulce Rosa Nails Spa — Castilla, Medellín</title>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="/src/style.css"/>
@@ -10,9 +18,9 @@
 <body>
 
 <!-- NAV -->
-<nav id="navbar">
+<nav id="navbar" aria-label="Principal">
   <div class="nav-logo" onclick="window.scrollTo({behavior:'smooth',top:0})">
-    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="site-logo" alt="Logo"/>
+    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="site-logo" alt="Logo Dulce Rosa Nails Spa" width="42" height="42"/>
     <div class="nav-brand">Dulce <span>Rosa</span> Nails Spa</div>
   </div>
   <ul class="nav-links">
@@ -28,11 +36,12 @@
 </nav>
 <div class="urgency-strip">🔥 ¡Cupos limitados esta semana! — <strong>Agenda hoy y asegura tu lugar</strong> 💅</div>
 
+<main>
 <!-- HERO -->
-<section id="inicio">
+<section id="inicio" aria-labelledby="hero-title">
   <div class="hero-text">
     <div class="hero-eyebrow">Nails Spa · Castilla, Medellín</div>
-    <h1 class="hero-title">El cuidado que<br>tus manos <em>merecen</em><br><strong>lo encontrás aquí</strong></h1>
+    <h1 class="hero-title" id="hero-title">El cuidado que<br>tus manos <em>merecen</em><br><strong>lo encontrás aquí</strong></h1>
     <p class="hero-desc">En Dulce Rosa Nails Spa mimamos tus manos y pies con técnicas profesionales, productos de calidad y un ambiente pensado para que te sientas como reina. <strong style="color:var(--rose)">+200 clientas satisfechas nos respaldan.</strong></p>
     <div class="hero-btns">
       <button class="btn-primary" onclick="abrirOverlay('overlay-cita')">Agendar mi cita</button>
@@ -40,8 +49,8 @@
     </div>
   </div>
   <div class="hero-visual">
-    <div class="logo-display"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="site-logo" alt="Dulce Rosa"/></div>
-    <div class="chip chip-1"><span class="chip-dot" style="background:#4CAF50"></span>Atendiendo hoy</div>
+    <div class="logo-display"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="site-logo" alt="Dulce Rosa Nails Spa" width="280" height="280"/></div>
+    <div class="chip chip-1" id="hero-turnos-chip"><span class="chip-dot" style="background:#4CAF50"></span>Atendiendo hoy</div>
     <div class="chip chip-2">💎 Gel · Acrílicas · Poligel</div>
     <div class="chip chip-3">📍 Barrio Castilla</div>
   </div>
@@ -175,10 +184,11 @@
     </div>
   </div>
   <div class="map-box reveal-right">
-    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.3!2d-75.612!3d6.289!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e44283e27898f4f%3A0x8e97e2f9df1ce850!2sCr.+72a+%2398-77%2C+Castilla%2C+Medell%C3%ADn!5e0!3m2!1ses!2sco!4v1" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+    <iframe title="Mapa de Dulce Rosa Nails Spa en Castilla, Medellin" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.3!2d-75.612!3d6.289!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e44283e27898f4f%3A0x8e97e2f9df1ce850!2sCr.+72a+%2398-77%2C+Castilla%2C+Medell%C3%ADn!5e0!3m2!1ses!2sco!4v1" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     <div class="map-badge">📍 Cr 72A #98-77, Castilla</div>
   </div>
 </section>
+</main>
 
 <!-- FOOTER -->
 <footer>
@@ -322,7 +332,7 @@
 <!-- ═══ MODAL LOGIN ═══ -->
 <div class="overlay" id="overlay-login">
   <div class="modal" style="max-width:420px">
-    <button class="modal-close" onclick="cerrarOverlay('overlay-login')">&times;</button>
+    <button class="modal-close" onclick="cerrarOverlay('overlay-login')" aria-label="Cerrar acceso admin">&times;</button>
     <div class="modal-title">🔐 Acceso Admin</div>
     <div class="modal-sub" id="auth-hint">Ingresa con el correo y la contrasena del admin creados en Firebase Auth.</div>
     <div class="a-field"><label class="a-label">Correo admin</label>
@@ -337,7 +347,7 @@
 <!-- ═══ MODAL ADMIN ═══ -->
 <div class="overlay" id="overlay-admin">
   <div class="modal">
-    <button class="modal-close" onclick="cerrarOverlay('overlay-admin')">&times;</button>
+    <button class="modal-close" onclick="cerrarOverlay('overlay-admin')" aria-label="Cerrar panel admin">&times;</button>
     <div class="modal-title">⚙️ Panel Admin</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
       <div class="modal-sub" id="admin-session-status">Inicia sesion con tu cuenta admin de Firebase.</div>
@@ -357,11 +367,19 @@
     <!-- CITAS -->
     <div class="tab-pane active" id="tab-citas">
       <div class="admin-stats">
-        <div class="stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total</div></div>
-        <div class="stat-card"><div class="stat-num" id="stat-hoy">0</div><div class="stat-label">Hoy</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Citas del mes</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-hoy">-</div><div class="stat-label">Servicio top</div></div>
         <div class="stat-card"><div class="stat-num" id="stat-prox">0</div><div class="stat-label">Próximas</div></div>
       </div>
-      <div class="filter-bar"><input class="filter-input" id="filtro-citas" type="text" placeholder="Buscar por nombre, servicio, fecha..." oninput="renderCitas()"/></div>
+      <div class="filter-bar admin-filter-grid">
+        <input class="filter-input" id="filtro-citas" type="text" placeholder="Buscar por nombre, servicio, fecha..."/>
+        <select class="filter-input" id="filtro-fecha-citas">
+          <option value="all">Todas</option>
+          <option value="today">Hoy</option>
+          <option value="week">Esta semana</option>
+          <option value="month">Este mes</option>
+        </select>
+      </div>
       <div style="display:flex;gap:7px;margin-bottom:11px">
         <button class="btn-export" onclick="renderCitas()">🔄 Actualizar</button>
         <button class="btn-export" onclick="exportarCitas()">📥 Exportar</button>
@@ -417,7 +435,7 @@
     <div class="tab-pane" id="tab-logo">
       <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:14px">Sube una imagen para reemplazar el logo en toda la página.</p>
       <div class="logo-preview-wrap">
-        <img id="preview-logo-admin" src="" alt="Logo actual"/>
+        <img id="preview-logo-admin" src="" alt="Logo actual" width="64" height="64"/>
         <span style="color:rgba(255,255,255,.4);font-size:.78rem">Logo actual</span>
       </div>
       <label class="upload-area">
@@ -472,7 +490,7 @@
 <!-- ═══ OVERLAY NUEVA PROMO ═══ -->
 <div id="overlay-nueva-promo" class="overlay">
   <div class="modal" style="max-width:460px">
-    <button class="modal-close" onclick="cerrarOverlay('overlay-nueva-promo')">&times;</button>
+    <button class="modal-close" onclick="cerrarOverlay('overlay-nueva-promo')" aria-label="Cerrar formulario de promocion">&times;</button>
     <div class="modal-title">🎁 Nueva Promoción</div>
     <div class="modal-sub">Se mostrará en la sección de promociones</div>
     <div class="a-field"><label class="a-label">Título *</label><input class="a-input" id="promo-titulo" placeholder="Ej: Combo Completo"/></div>
@@ -506,7 +524,10 @@
       <div class="detalles-precio" id="det-precio"></div>
       <div class="detalles-desc" id="det-desc"></div>
       <div class="detalles-info" id="det-detalles"></div>
-      <button class="detalles-agendar" id="det-nombre-btn" onclick="agendarDesdeDetalles()">Agendar cita</button>
+      <div class="detalles-actions">
+        <button class="detalles-share" type="button" id="det-share-btn">Compartir por WhatsApp</button>
+        <button class="detalles-agendar" id="det-nombre-btn" onclick="agendarDesdeDetalles()">Agendar cita</button>
+      </div>
     </div>
   </div>
 </div>
@@ -514,7 +535,7 @@
 <!-- ═══ OVERLAY NUEVO SERVICIO ═══ -->
 <div id="overlay-nuevo-svc" class="overlay">
   <div class="modal" style="max-width:500px">
-    <button class="modal-close" onclick="cerrarOverlay('overlay-nuevo-svc')">&times;</button>
+    <button class="modal-close" onclick="cerrarOverlay('overlay-nuevo-svc')" aria-label="Cerrar formulario de servicio">&times;</button>
     <div class="modal-title">✨ Nuevo servicio</div>
     <div class="modal-sub">Agrega un servicio personalizado</div>
     <div class="a-row">
@@ -536,5 +557,18 @@
 </div>
 
 <script type="module" src="/src/main.js"></script>
+<button id="scroll-top-btn" class="scroll-top-btn" type="button" aria-label="Volver arriba">↑</button>
+<div id="app-toast-stack" class="app-toast-stack" aria-live="polite" aria-atomic="true"></div>
+<div class="overlay" id="overlay-confirm">
+  <div class="modal confirm-modal" style="max-width:420px">
+    <button class="modal-close" onclick="resolverConfirmacion(false)" aria-label="Cerrar confirmacion">&times;</button>
+    <div class="modal-title">Confirmar accion</div>
+    <div class="modal-sub" id="confirm-message">Confirma para continuar.</div>
+    <div class="confirm-actions">
+      <button class="btn-export" type="button" onclick="resolverConfirmacion(false)">Cancelar</button>
+      <button class="btn-save" id="confirm-accept-btn" type="button" onclick="resolverConfirmacion(true)">Confirmar</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
