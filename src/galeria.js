@@ -15,7 +15,15 @@ export function renderGaleriaPublica(fotos) {
   if (!grid) return;
 
   if (!fotos.length) {
-    grid.innerHTML = '<div class="galeria-empty">Proximamente fotos de nuestros trabajos</div>';
+    const marketing = window.__marketingState || {};
+    const emptyText = marketing.emptyGaleriaText || 'Pronto veras fotos reales de nuestros trabajos mas recientes.';
+    grid.innerHTML = `
+      <div class="empty-state-card">
+        <h3>Galeria en actualizacion</h3>
+        <p>${emptyText}</p>
+        <button class="btn-primary" type="button" onclick="abrirOverlay('overlay-cita')">Agendar mi cita</button>
+      </div>
+    `;
     return;
   }
 

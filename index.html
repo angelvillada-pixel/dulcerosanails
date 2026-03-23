@@ -4,11 +4,15 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="description" content="Dulce Rosa Nails Spa en Castilla, Medellin. Agenda tu cita, explora la galeria, descubre promociones y comparte tus servicios favoritos."/>
+  <meta name="robots" content="index,follow"/>
+  <meta name="theme-color" content="#9B3A5A"/>
   <meta property="og:title" content="Dulce Rosa Nails Spa"/>
   <meta property="og:description" content="Nail spa en Castilla, Medellin. Citas, promociones, galeria y resenas en tiempo real."/>
   <meta property="og:type" content="website"/>
   <meta property="og:url" content="https://dulcerosanails.pages.dev/"/>
+  <meta property="og:locale" content="es_CO"/>
   <meta name="twitter:card" content="summary_large_image"/>
+  <link rel="canonical" href="https://dulcerosanails.pages.dev/"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <title>Dulce Rosa Nails Spa — Castilla, Medellín</title>
@@ -34,7 +38,7 @@
     <button class="btn-nav-primary" onclick="abrirOverlay('overlay-cita')">Agendar cita</button>
   </div>
 </nav>
-<div class="urgency-strip">🔥 ¡Cupos limitados esta semana! — <strong>Agenda hoy y asegura tu lugar</strong> 💅</div>
+<div class="urgency-strip" id="urgency-strip">Cupos limitados esta semana. <strong>Agenda hoy y asegura tu lugar.</strong></div>
 
 <main>
 <!-- HERO -->
@@ -164,6 +168,16 @@
       </div>
     </form>
   </div>
+</section>
+
+<section id="faq" class="faq-section" aria-labelledby="faq-title" hidden>
+  <div class="section-header" style="margin-bottom:40px">
+    <p class="section-tag">Antes de tu cita</p>
+    <h2 class="section-title" id="faq-title">Preguntas <em>frecuentes</em></h2>
+    <div class="section-divider"></div>
+    <p class="faq-subtitle" id="faq-subtitle">Resolvemos lo mas importante antes de agendar tu cita.</p>
+  </div>
+  <div id="faq-grid" class="faq-grid"></div>
 </section>
 
 <section id="ubicacion">
@@ -362,6 +376,8 @@
       <button class="tab-btn" data-tab="galeria" onclick="switchTab('galeria')">📷 Galería</button>
       <button class="tab-btn" data-tab="promos" onclick="switchTab('promos');cargarAdminPromociones()">🎁 Promos</button>
       <button class="tab-btn" data-tab="resenas" onclick="switchTab('resenas');cargarAdminResenas()">⭐ Reseñas</button>
+      <button class="tab-btn" data-tab="marketing" onclick="switchTab('marketing');cargarAdminMarketing()">📣 Growth</button>
+      <button class="tab-btn" data-tab="monitor" onclick="switchTab('monitor');cargarAdminMonitor()">🩺 Monitor</button>
     </div>
 
     <!-- CITAS -->
@@ -483,6 +499,92 @@
       <div id="resenas-lista"></div>
     </div>
 
+    <div class="tab-pane" id="tab-marketing">
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">Controla los mensajes de conversion, estados vacios y preguntas frecuentes de la web.</p>
+      <div class="admin-section-card">
+        <div class="admin-section-title">Urgencia y conversion</div>
+        <label class="admin-check"><input type="checkbox" id="mk-urgency-enabled"/> Mostrar franja superior de urgencia</label>
+        <div class="a-field">
+          <label class="a-label">Texto de urgencia</label>
+          <textarea class="a-textarea" id="mk-urgency-text" placeholder="Ej: Cupos limitados esta semana. Agenda hoy y asegura tu lugar."></textarea>
+        </div>
+      </div>
+
+      <div class="admin-section-card">
+        <div class="admin-section-title">Estados vacios de la web</div>
+        <div class="a-row">
+          <div class="a-field">
+            <label class="a-label">Promociones: titulo</label>
+            <input class="a-input" id="mk-empty-promos-title" type="text" placeholder="No hay promociones activas hoy"/>
+          </div>
+          <div class="a-field">
+            <label class="a-label">Promociones: texto</label>
+            <input class="a-input" id="mk-empty-promos-text" type="text" placeholder="Escribenos por WhatsApp y te ayudamos a elegir."/>
+          </div>
+        </div>
+        <div class="a-row">
+          <div class="a-field">
+            <label class="a-label">Resenas: titulo</label>
+            <input class="a-input" id="mk-empty-resenas-title" type="text" placeholder="Tu resena puede ser la proxima"/>
+          </div>
+          <div class="a-field">
+            <label class="a-label">Resenas: texto</label>
+            <input class="a-input" id="mk-empty-resenas-text" type="text" placeholder="Comparte tu experiencia despues de tu cita."/>
+          </div>
+        </div>
+        <div class="a-field">
+          <label class="a-label">Galeria: texto</label>
+          <input class="a-input" id="mk-empty-galeria-text" type="text" placeholder="Pronto veras mas fotos reales de nuestros trabajos."/>
+        </div>
+      </div>
+
+      <div class="admin-section-card">
+        <div class="admin-section-title">FAQ y SEO</div>
+        <label class="admin-check"><input type="checkbox" id="mk-faq-enabled"/> Mostrar seccion de preguntas frecuentes</label>
+        <div class="a-row">
+          <div class="a-field">
+            <label class="a-label">Titulo FAQ</label>
+            <input class="a-input" id="mk-faq-title" type="text" placeholder="Preguntas frecuentes"/>
+          </div>
+          <div class="a-field">
+            <label class="a-label">Subtitulo FAQ</label>
+            <input class="a-input" id="mk-faq-subtitle" type="text" placeholder="Resolvemos lo mas importante antes de agendar."/>
+          </div>
+        </div>
+        <div class="faq-admin-grid">
+          <div class="admin-section-card admin-section-card-soft">
+            <div class="admin-section-title">Pregunta 1</div>
+            <div class="a-field"><label class="a-label">Pregunta</label><input class="a-input" id="mk-faq-q1" type="text"/></div>
+            <div class="a-field"><label class="a-label">Respuesta</label><textarea class="a-textarea" id="mk-faq-a1"></textarea></div>
+          </div>
+          <div class="admin-section-card admin-section-card-soft">
+            <div class="admin-section-title">Pregunta 2</div>
+            <div class="a-field"><label class="a-label">Pregunta</label><input class="a-input" id="mk-faq-q2" type="text"/></div>
+            <div class="a-field"><label class="a-label">Respuesta</label><textarea class="a-textarea" id="mk-faq-a2"></textarea></div>
+          </div>
+          <div class="admin-section-card admin-section-card-soft">
+            <div class="admin-section-title">Pregunta 3</div>
+            <div class="a-field"><label class="a-label">Pregunta</label><input class="a-input" id="mk-faq-q3" type="text"/></div>
+            <div class="a-field"><label class="a-label">Respuesta</label><textarea class="a-textarea" id="mk-faq-a3"></textarea></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-save" onclick="guardarMarketing()">💾 Guardar contenido</button>
+      <span class="save-ok" id="ok-marketing">✅ ¡Guardado!</span>
+    </div>
+
+    <div class="tab-pane" id="tab-monitor">
+      <p style="color:rgba(255,255,255,.38);font-size:.76rem;margin-bottom:12px">Monitorea errores de frontend de esta sesion y el estado actual del backend en Render.</p>
+      <div class="monitor-toolbar">
+        <button class="btn-export" onclick="cargarAdminMonitor()">🔄 Refrescar estado</button>
+        <button class="btn-export" onclick="limpiarLogsMonitor()">🧹 Limpiar logs locales</button>
+      </div>
+      <div id="monitor-status-cards" class="monitor-status-grid"></div>
+      <div class="monitor-note" id="monitor-note">Los logs de frontend se guardan en este navegador para diagnostico rapido. El estado de Render se consulta en vivo.</div>
+      <div id="monitor-log-list" class="monitor-log-list"></div>
+    </div>
+
     </div>
   </div>
 </div>
@@ -557,6 +659,8 @@
 </div>
 
 <script type="module" src="/src/main.js"></script>
+<script id="jsonld-localbusiness" type="application/ld+json">{}</script>
+<script id="jsonld-faq" type="application/ld+json">{}</script>
 <button id="scroll-top-btn" class="scroll-top-btn" type="button" aria-label="Volver arriba">↑</button>
 <div id="app-toast-stack" class="app-toast-stack" aria-live="polite" aria-atomic="true"></div>
 <div class="overlay" id="overlay-confirm">

@@ -1013,7 +1013,7 @@ function renderAdminPromociones() {
     .join('');
 }
 
-function renderPromosPublicGrid() {
+renderPromosPublicGrid = function () {
   const grid = document.getElementById('promos-grid');
   if (!grid) return;
 
@@ -1103,9 +1103,9 @@ function renderAdminResenas() {
         `,
       )
       .join('');
-}
+};
 
-function renderResenasPublicGrid() {
+renderResenasPublicGrid = function () {
   const grid = document.getElementById('resenas-grid');
   if (!grid) return;
 
@@ -1141,7 +1141,7 @@ function renderResenasPublicGrid() {
       `,
     )
     .join('');
-}
+};
 
 window.cargarAdminPromociones = async function () {
   renderAdminPromociones();
@@ -1312,6 +1312,365 @@ window.enviarResena = async function (e) {
     realtimeState.resenasPublic.error = message;
     renderResenasPublicGrid();
     alert(`Error al enviar la resena: ${message}`);
+  } finally {
+    restoreButton();
+  }
+};
+
+const MARKETING_FORM_DEFAULTS = Object.freeze({
+  urgencyEnabled: true,
+  urgencyText: 'Cupos limitados esta semana. Agenda hoy y asegura tu lugar.',
+  emptyPromosTitle: 'No hay promociones activas hoy',
+  emptyPromosText: 'Escribenos por WhatsApp y te ayudamos a elegir el servicio ideal para esta semana.',
+  emptyResenasTitle: 'Tu resena puede ser la proxima',
+  emptyResenasText: 'Despues de tu cita puedes compartir tu experiencia y ayudar a otras clientas a elegir.',
+  emptyGaleriaText: 'Pronto veras fotos reales de nuestros trabajos mas recientes.',
+  faqEnabled: true,
+  faqTitle: 'Preguntas frecuentes',
+  faqSubtitle: 'Resolvemos lo mas importante antes de agendar tu cita.',
+  faqItems: [
+    { question: 'Como confirmo mi cita?', answer: 'Tu cita se confirma con un abono previo de $10.000 al Nequi publicado en la web.' },
+    { question: 'Puedo agendar para hoy?', answer: 'Si hay cupos disponibles puedes reservar hoy mismo desde la web o por WhatsApp.' },
+    { question: 'Que debo llevar a mi cita?', answer: 'Solo tu referencia o idea del diseno. Si tienes una foto, agregala en la nota de la reserva.' },
+  ],
+});
+
+let monitorBindingsReady = false;
+
+function currentMarketingState() {
+  return {
+    ...MARKETING_FORM_DEFAULTS,
+    ...(window.__marketingState || {}),
+  };
+}
+
+function readMarketingForm() {
+  return {
+    urgencyEnabled: document.getElementById('mk-urgency-enabled')?.checked !== false,
+    urgencyText: document.getElementById('mk-urgency-text')?.value.trim() || MARKETING_FORM_DEFAULTS.urgencyText,
+    emptyPromosTitle: document.getElementById('mk-empty-promos-title')?.value.trim() || MARKETING_FORM_DEFAULTS.emptyPromosTitle,
+    emptyPromosText: document.getElementById('mk-empty-promos-text')?.value.trim() || MARKETING_FORM_DEFAULTS.emptyPromosText,
+    emptyResenasTitle: document.getElementById('mk-empty-resenas-title')?.value.trim() || MARKETING_FORM_DEFAULTS.emptyResenasTitle,
+    emptyResenasText: document.getElementById('mk-empty-resenas-text')?.value.trim() || MARKETING_FORM_DEFAULTS.emptyResenasText,
+    emptyGaleriaText: document.getElementById('mk-empty-galeria-text')?.value.trim() || MARKETING_FORM_DEFAULTS.emptyGaleriaText,
+    faqEnabled: document.getElementById('mk-faq-enabled')?.checked !== false,
+    faqTitle: document.getElementById('mk-faq-title')?.value.trim() || MARKETING_FORM_DEFAULTS.faqTitle,
+    faqSubtitle: document.getElementById('mk-faq-subtitle')?.value.trim() || MARKETING_FORM_DEFAULTS.faqSubtitle,
+    faqItems: [1, 2, 3].map((index) => ({
+      question: document.getElementById(`mk-faq-q${index}`)?.value.trim() || MARKETING_FORM_DEFAULTS.faqItems[index - 1].question,
+      answer: document.getElementById(`mk-faq-a${index}`)?.value.trim() || MARKETING_FORM_DEFAULTS.faqItems[index - 1].answer,
+    })),
+  };
+}
+
+function writeMarketingForm(data = {}) {
+  const marketing = {
+    ...MARKETING_FORM_DEFAULTS,
+    ...data,
+    faqItems: Array.isArray(data.faqItems) && data.faqItems.length ? data.faqItems : MARKETING_FORM_DEFAULTS.faqItems,
+  };
+
+  const setValue = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  };
+
+  const setChecked = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = Boolean(value);
+  };
+
+  setChecked('mk-urgency-enabled', marketing.urgencyEnabled);
+  setValue('mk-urgency-text', marketing.urgencyText);
+  setValue('mk-empty-promos-title', marketing.emptyPromosTitle);
+  setValue('mk-empty-promos-text', marketing.emptyPromosText);
+  setValue('mk-empty-resenas-title', marketing.emptyResenasTitle);
+  setValue('mk-empty-resenas-text', marketing.emptyResenasText);
+  setValue('mk-empty-galeria-text', marketing.emptyGaleriaText);
+  setChecked('mk-faq-enabled', marketing.faqEnabled);
+  setValue('mk-faq-title', marketing.faqTitle);
+  setValue('mk-faq-subtitle', marketing.faqSubtitle);
+
+  [1, 2, 3].forEach((index) => {
+    const item = marketing.faqItems[index - 1] || {};
+    setValue(`mk-faq-q${index}`, item.question || '');
+    setValue(`mk-faq-a${index}`, item.answer || '');
+  });
+}
+
+window.cargarAdminMarketing = async function () {
+  writeMarketingForm(currentMarketingState());
+
+  try {
+    const snap = await getDoc(doc(db, 'config', 'marketing'));
+    const data = snap.exists() ? snap.data() : currentMarketingState();
+    writeMarketingForm(data);
+    clearAdminError('marketing');
+  } catch (error) {
+    showAdminError('marketing', formatError(error, 'No se pudo cargar el contenido editable.'));
+  }
+};
+
+window.guardarMarketing = async function () {
+  const restoreButton = setBusyButton(document.querySelector('#tab-marketing .btn-save'), 'Guardando...');
+
+  try {
+    const payload = readMarketingForm();
+    await setDoc(doc(db, 'config', 'marketing'), payload);
+    window.__marketingState = payload;
+    clearAdminError('marketing');
+    showOk('ok-marketing');
+    showAdminToast('Contenido de conversion actualizado.', 'success');
+  } catch (error) {
+    showAdminError('marketing', formatError(error, 'No se pudo guardar el contenido editable.'));
+    showAdminToast('No se pudo guardar el contenido editable.', 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
+function monitorPill(status = 'idle') {
+  if (status === 'ok') return '<span class="monitor-pill ok">Online</span>';
+  if (status === 'warn') return '<span class="monitor-pill warn">Lento</span>';
+  if (status === 'error') return '<span class="monitor-pill error">Con fallas</span>';
+  if (status === 'checking') return '<span class="monitor-pill warn">Comprobando</span>';
+  return '<span class="monitor-pill warn">Sin datos</span>';
+}
+
+function renderMonitorPanel() {
+  const cards = document.getElementById('monitor-status-cards');
+  const list = document.getElementById('monitor-log-list');
+  const note = document.getElementById('monitor-note');
+  if (!cards || !list) return;
+
+  const monitorApi = window.__monitoring;
+  const logs = monitorApi?.getLogs?.() || [];
+  const health = monitorApi?.getHealth?.() || { status: 'idle', message: 'Sin comprobar', checkedAt: null };
+  const errorCount = logs.filter((item) => item.level === 'error').length;
+  const latest = logs[0];
+
+  cards.innerHTML = `
+    <div class="monitor-card">
+      <div class="monitor-card-label">Render</div>
+      <div class="monitor-card-value">${monitorPill(health.status)}</div>
+      <div class="monitor-card-sub">${escapeHtml(health.message || 'Sin comprobar')}</div>
+      <div class="monitor-card-sub">${health.checkedAt ? `Ultima revision: ${escapeHtml(monitorApi?.formatTime?.(health.checkedAt) || health.checkedAt)}` : 'Aun no se ha consultado.'}</div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-card-label">Errores frontend</div>
+      <div class="monitor-card-value">${errorCount}</div>
+      <div class="monitor-card-sub">${latest ? `Ultimo: ${escapeHtml(latest.message)}` : 'Sin errores registrados en esta sesion.'}</div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-card-label">Latencia</div>
+      <div class="monitor-card-value">${health.latencyMs ? `${health.latencyMs} ms` : '--'}</div>
+      <div class="monitor-card-sub">Medicion en vivo del backend usado para citas y slots.</div>
+    </div>
+  `;
+
+  if (note) {
+    note.textContent = 'Los logs de frontend se guardan en este navegador para diagnostico rapido. El estado de Render se consulta en vivo.';
+  }
+
+  if (!logs.length) {
+    list.innerHTML = '<div class="monitor-log-empty">No hay errores recientes registrados en este navegador.</div>';
+    return;
+  }
+
+  list.innerHTML = logs
+    .map(
+      (item) => `
+        <div class="monitor-log-item">
+          <div class="monitor-log-top">
+            <div class="monitor-log-title">${escapeHtml(item.type || 'evento')} - ${escapeHtml(item.level || 'info')}</div>
+            <div class="monitor-log-time">${escapeHtml(monitorApi?.formatTime?.(item.createdAt) || item.createdAt || '')}</div>
+          </div>
+          <div class="monitor-log-meta">${escapeHtml(item.message || '')}</div>
+          <div class="monitor-log-meta">Origen: ${escapeHtml(item.meta?.source || 'general')}</div>
+        </div>
+      `,
+    )
+    .join('');
+}
+
+function bindMonitorPanel() {
+  if (monitorBindingsReady) return;
+  monitorBindingsReady = true;
+
+  window.addEventListener('dr-monitor-update', () => {
+    if (document.getElementById('tab-monitor')?.classList.contains('active')) renderMonitorPanel();
+  });
+
+  window.addEventListener('dr-monitor-health', () => {
+    if (document.getElementById('tab-monitor')?.classList.contains('active')) renderMonitorPanel();
+  });
+}
+
+window.cargarAdminMonitor = async function () {
+  bindMonitorPanel();
+  renderMonitorPanel();
+
+  try {
+    await window.__monitoring?.refreshHealth?.({ silent: true });
+  } catch (error) {
+    showAdminToast(error?.message || 'No se pudo consultar el estado de Render.', 'error');
+  } finally {
+    renderMonitorPanel();
+  }
+};
+
+window.limpiarLogsMonitor = function () {
+  window.__monitoring?.clearLogs?.();
+  renderMonitorPanel();
+  showAdminToast('Logs locales limpiados.', 'success');
+};
+
+function renderPromosPublicGrid() {
+  const grid = document.getElementById('promos-grid');
+  if (!grid) return;
+
+  const state = realtimeState.promosPublic;
+  const marketing = currentMarketingState();
+  if (state.loading) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  if (state.error) {
+    console.warn('Promociones publicas:', state.error);
+    grid.innerHTML = `
+      <div class="empty-state-card">
+        <h3>${escapeHtml(marketing.emptyPromosTitle)}</h3>
+        <p>${escapeHtml(marketing.emptyPromosText)}</p>
+        <button class="btn-primary" type="button" onclick="abrirOverlay('overlay-cita')">Agendar cita</button>
+      </div>
+    `;
+    return;
+  }
+
+  if (!state.items.length) {
+    grid.innerHTML = `
+      <div class="empty-state-card">
+        <h3>${escapeHtml(marketing.emptyPromosTitle)}</h3>
+        <p>${escapeHtml(marketing.emptyPromosText)}</p>
+        <button class="btn-primary" type="button" onclick="abrirOverlay('overlay-cita')">Quiero asesoría</button>
+      </div>
+    `;
+    return;
+  }
+
+  const badges = ['Mas popular', 'Destacada', 'Especial'];
+  const colors = ['var(--rose)', 'var(--gold)', '#4CAF50'];
+
+  grid.innerHTML = state.items
+    .map(
+      (promo, index) => `
+        <div class="promo-card reveal visible">
+          <div class="promo-badge" style="background:${colors[index % colors.length]}">${badges[index % badges.length]}</div>
+          <div class="promo-title">${escapeHtml(promo.titulo || 'Promocion')}</div>
+          <div class="promo-desc">${escapeHtml(promo.descripcion || '')}</div>
+          <div class="promo-precio"><span class="promo-ahora">${escapeHtml(promo.descuento || '')}</span></div>
+          ${promo.fechafin ? `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${escapeHtml(promo.fechafin)}</div>` : ''}
+          <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">Quiero esta promocion</button>
+        </div>
+      `,
+    )
+    .join('');
+}
+
+function renderResenasPublicGrid() {
+  const grid = document.getElementById('resenas-grid');
+  if (!grid) return;
+
+  const state = realtimeState.resenasPublic;
+  const marketing = currentMarketingState();
+  if (state.loading) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  if (state.error) {
+    console.warn('Resenas publicas:', state.error);
+    grid.innerHTML = `
+      <div class="empty-state-card light">
+        <h3>${escapeHtml(marketing.emptyResenasTitle)}</h3>
+        <p>${escapeHtml(marketing.emptyResenasText)}</p>
+        <button class="btn-ghost" type="button" onclick="document.getElementById('resena-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })">Escribir una resena</button>
+      </div>
+    `;
+    return;
+  }
+
+  if (!state.items.length) {
+    grid.innerHTML = `
+      <div class="empty-state-card light">
+        <h3>${escapeHtml(marketing.emptyResenasTitle)}</h3>
+        <p>${escapeHtml(marketing.emptyResenasText)}</p>
+        <button class="btn-ghost" type="button" onclick="document.getElementById('resena-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })">Compartir experiencia</button>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = state.items
+    .slice(0, 6)
+    .map(
+      (resena) => `
+        <div class="testimonio-card reveal visible">
+          <div class="test-stars">${'★'.repeat(resena.estrellas || 5)}${'☆'.repeat(5 - (resena.estrellas || 5))}</div>
+          <p class="test-text">"${escapeHtml(resena.comentario || '')}"</p>
+          <div class="test-autor">
+            <div class="test-avatar">${escapeHtml((resena.nombre || 'C').charAt(0).toUpperCase())}</div>
+            <div><strong>${escapeHtml(resena.nombre || 'Clienta')}</strong><span>${escapeHtml(resena.servicio || 'Clienta')}</span></div>
+          </div>
+        </div>
+      `,
+    )
+    .join('');
+}
+
+window.enviarResena = async function (e) {
+  e.preventDefault();
+
+  if (typeof window.validateReviewFormInputs === 'function' && !window.validateReviewFormInputs()) {
+    return;
+  }
+
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = Number(document.getElementById('res-estrellas')?.value) || 5;
+  const servicio = document.getElementById('res-servicio')?.value.trim() || '';
+  const comentario = document.getElementById('res-comentario')?.value.trim();
+  const btn = document.getElementById('btn-resena');
+  const restoreButton = setBusyButton(btn, 'Enviando...');
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
+      nombre,
+      estrellas,
+      servicio,
+      comentario,
+      aprobada: false,
+      creado: fb.serverTimestamp(),
+      creadoMs: Date.now(),
+    });
+
+    realtimeState.resenasAdmin.error = null;
+    document.getElementById('resena-form')?.reset();
+    ['res-nombre', 'res-servicio', 'res-comentario'].forEach((id) => window.__clearFieldError?.(document.getElementById(id)));
+    const ok = document.getElementById('resena-ok');
+    if (ok) {
+      ok.style.display = 'block';
+      setTimeout(() => {
+        ok.style.display = 'none';
+      }, 5000);
+    }
+    showAdminToast('Resena enviada. Quedo pendiente de aprobacion.', 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo enviar la resena.');
+    realtimeState.resenasPublic.error = message;
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
   } finally {
     restoreButton();
   }

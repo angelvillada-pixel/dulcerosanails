@@ -55,6 +55,46 @@ document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
 setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=LOGO; },200);
 
 const runtimeIssues = new Map();
+const MARKETING_DEFAULTS = Object.freeze({
+  urgencyEnabled: true,
+  urgencyText: 'Cupos limitados esta semana. Agenda hoy y asegura tu lugar.',
+  emptyPromosTitle: 'No hay promociones activas hoy',
+  emptyPromosText: 'Escribenos por WhatsApp y te ayudamos a elegir el servicio ideal para esta semana.',
+  emptyResenasTitle: 'Tu resena puede ser la proxima',
+  emptyResenasText: 'Despues de tu cita puedes compartir tu experiencia y ayudar a otras clientas a elegir.',
+  emptyGaleriaText: 'Pronto veras fotos reales de nuestros trabajos mas recientes.',
+  faqEnabled: true,
+  faqTitle: 'Preguntas frecuentes',
+  faqSubtitle: 'Resolvemos lo mas importante antes de agendar tu cita.',
+  faqItems: [
+    { question: 'Como confirmo mi cita?', answer: 'Tu cita se confirma con un abono previo de $10.000 al Nequi publicado en la web.' },
+    { question: 'Puedo agendar para hoy?', answer: 'Si hay cupos disponibles puedes reservar hoy mismo desde la web o por WhatsApp.' },
+    { question: 'Que debo llevar a mi cita?', answer: 'Solo tu referencia o idea del diseno. Si tienes una foto, agregala en la nota de la reserva.' },
+  ],
+});
+const MONITOR_STORAGE_KEY = 'dulce-rosa:monitor-log';
+const MONITOR_MAX_ENTRIES = 50;
+const MONITOR_DEDUPE_MS = 60000;
+const RENDER_HEALTH_URL = 'https://dulce-rosa-api.onrender.com/health';
+
+let marketingConfig = { ...MARKETING_DEFAULTS };
+window.__marketingState = marketingConfig;
+
+const seoState = {
+  logo: LOGO,
+  phone: '3245683032',
+};
+
+const monitorState = {
+  logs: [],
+  health: {
+    status: 'idle',
+    latencyMs: null,
+    checkedAt: null,
+    message: 'Sin comprobar',
+  },
+};
+const monitorDedupe = new Map();
 
 function ensureRuntimeBanner() {
   let banner = document.getElementById('runtime-status-banner');
@@ -81,6 +121,7 @@ function renderRuntimeIssues() {
 
 function setRuntimeIssue(key, message) {
   runtimeIssues.set(key, message);
+  recordMonitorEvent('runtime', message, { source: key }, 'error');
   renderRuntimeIssues();
 }
 
@@ -92,6 +133,364 @@ function formatRenderIssue(scope, error) {
   const detail = error?.message || String(error || 'Error desconocido.');
   return `${scope}: ${detail}`;
 }
+
+function readLocalJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+function formatMonitorTime(value) {
+  if (!value) return 'Sin fecha';
+  try {
+    return new Date(value).toLocaleString('es-CO', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Bogota',
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function publishMonitorUpdate() {
+  window.dispatchEvent(new CustomEvent('dr-monitor-update', { detail: { logs: [...monitorState.logs] } }));
+}
+
+function publishMonitorHealth() {
+  window.dispatchEvent(new CustomEvent('dr-monitor-health', { detail: { ...monitorState.health } }));
+}
+
+function trimMonitorLogs(logs) {
+  return [...logs]
+    .filter((item) => item && item.message)
+    .slice(0, MONITOR_MAX_ENTRIES);
+}
+
+function setMonitorLogs(logs) {
+  monitorState.logs = trimMonitorLogs(logs);
+  writeLocalJson(MONITOR_STORAGE_KEY, monitorState.logs);
+  publishMonitorUpdate();
+}
+
+function initMonitorLogs() {
+  monitorState.logs = trimMonitorLogs(readLocalJson(MONITOR_STORAGE_KEY, []));
+}
+
+function recordMonitorEvent(type, message, meta = {}, level = 'error') {
+  const normalizedMessage = String(message || 'Sin detalle').trim();
+  if (!normalizedMessage) return;
+
+  const key = `${type}:${meta.source || 'general'}:${normalizedMessage}`;
+  const now = Date.now();
+  const last = monitorDedupe.get(key) || 0;
+  if (now - last < MONITOR_DEDUPE_MS) return;
+  monitorDedupe.set(key, now);
+
+  const nextEntry = {
+    id: `log_${now}`,
+    type,
+    level,
+    message: normalizedMessage,
+    meta,
+    createdAt: new Date(now).toISOString(),
+  };
+
+  setMonitorLogs([nextEntry, ...monitorState.logs]);
+
+  if (
+    level === 'error' &&
+    document.getElementById('overlay-admin')?.classList.contains('show') &&
+    document.getElementById('tab-monitor')?.classList.contains('active')
+  ) {
+    window.showAppToast?.(`Nuevo error detectado: ${normalizedMessage}`, 'error');
+  }
+}
+
+async function probeRenderHealth({ silent = false } = {}) {
+  const startedAt = performance.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  monitorState.health = {
+    status: 'checking',
+    latencyMs: null,
+    checkedAt: new Date().toISOString(),
+    message: 'Comprobando Render...',
+  };
+  publishMonitorHealth();
+
+  try {
+    let response = await fetch(RENDER_HEALTH_URL, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+
+    if (response.status === 404) {
+      response = await fetch('https://dulce-rosa-api.onrender.com/', {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+    }
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json().catch(() => ({}));
+    const latencyMs = Math.round(performance.now() - startedAt);
+    const status = latencyMs > 3000 ? 'warn' : 'ok';
+    const message = payload?.message || (status === 'warn' ? 'Render respondio lento.' : 'Render disponible.');
+
+    monitorState.health = {
+      status,
+      latencyMs,
+      checkedAt: new Date().toISOString(),
+      message,
+    };
+    publishMonitorHealth();
+    return monitorState.health;
+  } catch (error) {
+    const message = error?.name === 'AbortError'
+      ? 'Render no respondio a tiempo.'
+      : error?.message || 'No se pudo consultar Render.';
+
+    monitorState.health = {
+      status: 'error',
+      latencyMs: null,
+      checkedAt: new Date().toISOString(),
+      message,
+    };
+    publishMonitorHealth();
+    if (!silent) recordMonitorEvent('backend', message, { source: 'render-health' }, 'error');
+    return monitorState.health;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function normalizeMarketingConfig(data = {}) {
+  const incomingFaq = Array.isArray(data.faqItems) ? data.faqItems : [];
+  const faqItems = [...MARKETING_DEFAULTS.faqItems].map((item, index) => {
+    const incoming = incomingFaq[index] || {};
+    return {
+      question: incoming.question || item.question,
+      answer: incoming.answer || item.answer,
+    };
+  });
+
+  return {
+    ...MARKETING_DEFAULTS,
+    ...data,
+    urgencyEnabled: data.urgencyEnabled !== false,
+    faqEnabled: data.faqEnabled !== false,
+    faqItems,
+  };
+}
+
+function setJsonLd(id, payload) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.textContent = JSON.stringify(payload).replace(/</g, '\\u003c');
+}
+
+function updateStructuredData() {
+  setJsonLd('jsonld-localbusiness', {
+    '@context': 'https://schema.org',
+    '@type': 'NailSalon',
+    name: 'Dulce Rosa Nails Spa',
+    url: 'https://dulcerosanails.pages.dev/',
+    image: seoState.logo,
+    telephone: `+57${String(seoState.phone || '3245683032').replace(/\D+/g, '')}`,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'Cr 72A #98-77',
+      addressLocality: 'Medellin',
+      addressRegion: 'Antioquia',
+      addressCountry: 'CO',
+    },
+    areaServed: 'Castilla, Medellin',
+    openingHoursSpecification: [
+      {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+        opens: '08:00',
+        closes: '19:00',
+      },
+    ],
+  });
+
+  const faqItems = (marketingConfig.faqItems || []).filter((item) => item.question && item.answer);
+  setJsonLd(
+    'jsonld-faq',
+    faqItems.length && marketingConfig.faqEnabled
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: faqItems.map((item) => ({
+            '@type': 'Question',
+            name: item.question,
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: item.answer,
+            },
+          })),
+        }
+      : {},
+  );
+}
+
+function renderUrgencyStrip() {
+  const strip = document.getElementById('urgency-strip');
+  if (!strip) return;
+
+  if (!marketingConfig.urgencyEnabled || !marketingConfig.urgencyText?.trim()) {
+    strip.style.display = 'none';
+    return;
+  }
+
+  strip.style.display = 'block';
+  strip.textContent = marketingConfig.urgencyText.trim();
+}
+
+function renderFaqSection() {
+  const section = document.getElementById('faq');
+  const title = document.getElementById('faq-title');
+  const subtitle = document.getElementById('faq-subtitle');
+  const grid = document.getElementById('faq-grid');
+  if (!section || !title || !subtitle || !grid) return;
+
+  const items = (marketingConfig.faqItems || []).filter((item) => item.question && item.answer);
+  if (!marketingConfig.faqEnabled || !items.length) {
+    section.hidden = true;
+    grid.innerHTML = '';
+    return;
+  }
+
+  section.hidden = false;
+  title.textContent = marketingConfig.faqTitle || 'Preguntas frecuentes';
+  subtitle.textContent = marketingConfig.faqSubtitle || MARKETING_DEFAULTS.faqSubtitle;
+  grid.innerHTML = items
+    .map(
+      (item) => `
+        <article class="faq-card reveal">
+          <h3 class="faq-question">${item.question}</h3>
+          <p class="faq-answer">${item.answer}</p>
+        </article>
+      `,
+    )
+    .join('');
+  initReveal();
+}
+
+function applyMarketingConfig(data = {}) {
+  marketingConfig = normalizeMarketingConfig(data);
+  window.__marketingState = marketingConfig;
+  renderUrgencyStrip();
+  renderFaqSection();
+  updateStructuredData();
+}
+
+function fieldErrorId(input) {
+  return `${input.id}-error`;
+}
+
+function setFieldError(input, message = '') {
+  if (!input?.id) return;
+  let errorNode = document.getElementById(fieldErrorId(input));
+
+  if (!message) {
+    input.classList.remove('is-invalid');
+    if (errorNode) errorNode.remove();
+    return;
+  }
+
+  input.classList.add('is-invalid');
+  if (!errorNode) {
+    errorNode = document.createElement('span');
+    errorNode.id = fieldErrorId(input);
+    errorNode.className = 'field-error';
+    input.insertAdjacentElement('afterend', errorNode);
+  }
+  errorNode.textContent = message;
+}
+
+function clearFieldError(input) {
+  setFieldError(input, '');
+}
+
+function validateBookingForm() {
+  const nombre = document.getElementById('inp-nombre');
+  const tel = document.getElementById('inp-tel');
+  const servicio = document.getElementById('inp-servicio');
+  const fecha = document.getElementById('inp-fecha');
+  const hora = document.getElementById('inp-hora');
+  const telDigits = (tel?.value || '').replace(/\D+/g, '');
+  let valid = true;
+
+  if (!nombre?.value.trim() || nombre.value.trim().length < 2) {
+    setFieldError(nombre, 'Escribe tu nombre para confirmar la reserva.');
+    valid = false;
+  } else clearFieldError(nombre);
+
+  if (telDigits.length < 10) {
+    setFieldError(tel, 'Escribe un WhatsApp valido de 10 digitos.');
+    valid = false;
+  } else clearFieldError(tel);
+
+  if (!servicio?.value) {
+    setFieldError(servicio, 'Selecciona el servicio que deseas agendar.');
+    valid = false;
+  } else clearFieldError(servicio);
+
+  if (!fecha?.value) {
+    setFieldError(fecha, 'Selecciona una fecha para ver los horarios.');
+    valid = false;
+  } else if (!hora?.value) {
+    setFieldError(fecha, 'Selecciona una fecha y luego un horario disponible.');
+    valid = false;
+  } else {
+    clearFieldError(fecha);
+  }
+
+  return valid;
+}
+
+window.validateReviewFormInputs = function() {
+  const nombre = document.getElementById('res-nombre');
+  const comentario = document.getElementById('res-comentario');
+  const servicio = document.getElementById('res-servicio');
+  let valid = true;
+
+  if (!nombre?.value.trim() || nombre.value.trim().length < 2) {
+    setFieldError(nombre, 'Escribe tu nombre para publicar la resena.');
+    valid = false;
+  } else clearFieldError(nombre);
+
+  if (!comentario?.value.trim() || comentario.value.trim().length < 12) {
+    setFieldError(comentario, 'Cuéntanos un poco mas de tu experiencia.');
+    valid = false;
+  } else clearFieldError(comentario);
+
+  if (servicio && servicio.value.trim().length > 80) {
+    setFieldError(servicio, 'El nombre del servicio es demasiado largo.');
+    valid = false;
+  } else if (servicio) {
+    clearFieldError(servicio);
+  }
+
+  return valid;
+};
 
 function readSessionCache(key, fallback) {
   try {
@@ -478,13 +877,29 @@ const cachedSiteConfig = readSessionCache('site', null);
 const cachedPrecios = readSessionCache('precios', PRECIOS_DEFAULT);
 const cachedServicios = readSessionCache('servicios', {});
 const cachedGaleria = readSessionCache('galeria', []);
+const cachedMarketing = readSessionCache('marketing', MARKETING_DEFAULTS);
+
+initMonitorLogs();
+window.__monitoring = {
+  getLogs: () => [...monitorState.logs],
+  clearLogs: () => setMonitorLogs([]),
+  getHealth: () => ({ ...monitorState.health }),
+  refreshHealth: (options) => probeRenderHealth(options),
+  record: recordMonitorEvent,
+  formatTime: formatMonitorTime,
+};
+window.__setFieldError = setFieldError;
+window.__clearFieldError = clearFieldError;
 
 if (cachedSiteConfig?.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=cachedSiteConfig.logo);
 if (cachedSiteConfig?.nequi) document.querySelectorAll('.nequi-num').forEach(el=>el.textContent=cachedSiteConfig.nequi);
 if (Array.isArray(cachedSiteConfig?.horarios) && cachedSiteConfig.horarios.length) window._horasDisponibles = cachedSiteConfig.horarios;
+if (cachedSiteConfig?.logo) seoState.logo = cachedSiteConfig.logo;
+if (cachedSiteConfig?.nequi) seoState.phone = cachedSiteConfig.nequi;
 
 preciosActuales = {...PRECIOS_DEFAULT, ...(cachedPrecios || {})};
 serviciosActuales = cachedServicios || {};
+applyMarketingConfig(cachedMarketing);
 
 renderServicios(serviciosActuales, preciosActuales);
 actualizarSelectServicios();
@@ -503,6 +918,9 @@ onSnapshot(doc(db,'config','site'), snap => {
   writeSessionCache('site', d);
   if (d.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=d.logo);
   if (d.nequi) document.querySelectorAll('.nequi-num').forEach(el=>el.textContent=d.nequi);
+  if (d.logo) seoState.logo = d.logo;
+  if (d.nequi) seoState.phone = d.nequi;
+  updateStructuredData();
   if (d.horarios) {
     window._horasDisponibles = d.horarios.length ? d.horarios : [...HORAS_DEFAULT];
     watchTodayAvailability();
@@ -510,6 +928,7 @@ onSnapshot(doc(db,'config','site'), snap => {
     if (fecha) window.cargarSlots();
   }
 }, error => {
+  recordMonitorEvent('frontend', formatRenderIssue('Configuracion', error), { source: 'config-site' }, 'warn');
   console.warn('Configuracion:', error);
 });
 
@@ -521,6 +940,7 @@ onSnapshot(doc(db,'config','precios'), snap => {
   actualizarSelectServicios();
   updateTodayAvailabilityChip([]);
 }, error => {
+  recordMonitorEvent('frontend', formatRenderIssue('Precios', error), { source: 'config-precios' }, 'warn');
   console.warn('Precios:', error);
 });
 
@@ -531,6 +951,7 @@ onSnapshot(doc(db,'config','servicios'), snap => {
   renderServicios(serviciosActuales, preciosActuales);
   actualizarSelectServicios();
 }, error => {
+  recordMonitorEvent('frontend', formatRenderIssue('Servicios', error), { source: 'config-servicios' }, 'warn');
   console.warn('Servicios:', error);
 });
 
@@ -540,7 +961,17 @@ onSnapshot(collection(db,'galeria'), snap => {
   renderGaleriaPublica(fotos);
   renderGaleriaAdmin(fotos);
 }, error => {
+  recordMonitorEvent('frontend', formatRenderIssue('Galeria', error), { source: 'galeria' }, 'warn');
   console.warn('Galeria:', error);
+});
+
+onSnapshot(doc(db,'config','marketing'), snap => {
+  const nextMarketing = snap.exists() ? snap.data() : MARKETING_DEFAULTS;
+  writeSessionCache('marketing', nextMarketing);
+  applyMarketingConfig(nextMarketing);
+}, error => {
+  recordMonitorEvent('frontend', formatRenderIssue('Marketing', error), { source: 'config-marketing' }, 'warn');
+  console.warn('Marketing:', error);
 });
 
 function actualizarSelectServicios() {
@@ -577,6 +1008,7 @@ function actualizarSelectServicios() {
 window.cargarSlots = async function() {
   const fecha = document.getElementById('inp-fecha').value;
   if (!fecha) return;
+  clearFieldError(document.getElementById('inp-fecha'));
   horaSeleccionada = null;
   document.getElementById('inp-hora').value = '';
   if (unsubSlots) { unsubSlots(); unsubSlots=null; }
@@ -615,6 +1047,7 @@ function selSlot(h, el) {
   document.querySelectorAll('.slot-btn').forEach(b=>b.classList.remove('selected'));
   el.classList.add('selected'); horaSeleccionada=h;
   document.getElementById('inp-hora').value=h;
+  clearFieldError(document.getElementById('inp-fecha'));
 }
 
 // ── ENVIAR CITA ──
@@ -664,12 +1097,11 @@ window._enviarCitaLegacy = async function(e) {
 window.enviarCita = async function(e) {
   e.preventDefault();
 
-  const hora = document.getElementById('inp-hora').value;
-  if (!hora) {
-    mostrarToast('Por favor selecciona un horario.', true);
+  if (!validateBookingForm()) {
     return;
   }
 
+  const hora = document.getElementById('inp-hora').value;
   const fecha = document.getElementById('inp-fecha').value;
   const nombre = document.getElementById('inp-nombre').value.trim();
   const tel = document.getElementById('inp-tel').value.trim();
@@ -737,6 +1169,7 @@ window.enviarCita = async function(e) {
 
     const form = document.getElementById('citaForm');
     if (form) form.reset();
+    ['inp-nombre', 'inp-tel', 'inp-servicio', 'inp-fecha'].forEach((id) => clearFieldError(document.getElementById(id)));
     horaSeleccionada = null;
     document.getElementById('inp-hora').value = '';
     if (unsubSlots) {
@@ -778,6 +1211,23 @@ function mostrarToast(msg,esError) {
 }
 
 // ── AUTH ADMIN ──
+window.addEventListener('error', (event) => {
+  if (String(event?.filename || '').startsWith('chrome-extension://')) return;
+  if (!event?.message) return;
+  recordMonitorEvent('frontend', event.message, {
+    source: 'window-error',
+    file: event.filename || '',
+    line: event.lineno || '',
+  }, 'error');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event?.reason;
+  const message = reason?.message || String(reason || '');
+  if (!message || message === '[object Object]') return;
+  recordMonitorEvent('frontend', message, { source: 'unhandledrejection' }, 'error');
+});
+
 window.verificarCredenciales = async function() {
   const email = document.getElementById('auth-user').value.trim();
   const password = document.getElementById('auth-pass').value;
@@ -831,6 +1281,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   const fi=document.getElementById('inp-fecha');
   const scrollTopBtn = document.getElementById('scroll-top-btn');
   if(fi) fi.min=fechaHoyColombia();
+  [['inp-nombre', 'input'], ['inp-tel', 'input'], ['inp-servicio', 'change'], ['inp-fecha', 'change'], ['res-nombre', 'input'], ['res-servicio', 'input'], ['res-comentario', 'input']].forEach(([id, eventName]) => {
+    const field = document.getElementById(id);
+    field?.addEventListener(eventName, () => clearFieldError(field));
+  });
   window.addEventListener('scroll',()=>{
     document.getElementById('navbar').classList.toggle('scrolled',scrollY>40);
     if (scrollTopBtn) scrollTopBtn.classList.toggle('show', scrollY > 300);
@@ -847,6 +1301,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   initReveal();
   actualizarSelectServicios();
   updateTodayAvailabilityChip([]);
+  updateStructuredData();
+  setTimeout(() => {
+    probeRenderHealth({ silent: true }).catch(() => {});
+  }, 1400);
   // Cargar promos y reseñas desde Firebase (instantáneo, sin Render)
   cargarPromosPublicas();
   cargarResenasPublicas();
