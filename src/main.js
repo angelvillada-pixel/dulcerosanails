@@ -2,7 +2,7 @@ import { LOGO } from './assets/logo.js';
 import { db, collection, doc, getDoc, setDoc, addDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
 import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen, to12h } from './data.js';
 import { renderGaleriaPublica } from './galeria.js';
-import { renderGaleriaAdmin, showOk, cargarPromosPublicas, cargarResenasPublicas } from './admin.js';
+import { renderGaleriaAdmin, cargarPromosPublicas, cargarResenasPublicas } from './admin.js';
 
 // ── GLOBAL FUNCTIONS — defined immediately so HTML onclicks work ──
 window.abrirOverlay = function(id) {
@@ -26,6 +26,45 @@ let unsubSlots = null;
 
 document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
 setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=LOGO; },200);
+
+const runtimeIssues = new Map();
+
+function ensureRuntimeBanner() {
+  let banner = document.getElementById('runtime-status-banner');
+  if (banner) return banner;
+
+  banner = document.createElement('div');
+  banner.id = 'runtime-status-banner';
+  banner.style.cssText = 'display:none;position:fixed;left:16px;right:16px;bottom:16px;z-index:1200;padding:12px 16px;border-radius:14px;background:rgba(42,21,32,.96);border:1px solid rgba(255,107,107,.35);color:#fff;font:500 13px/1.5 "DM Sans",sans-serif;box-shadow:0 16px 40px rgba(0,0,0,.28);';
+  document.body.appendChild(banner);
+  return banner;
+}
+
+function renderRuntimeIssues() {
+  const banner = ensureRuntimeBanner();
+  if (!runtimeIssues.size) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    return;
+  }
+
+  banner.style.display = 'block';
+  banner.innerHTML = [...runtimeIssues.values()].map(msg => `<div>${msg}</div>`).join('');
+}
+
+function setRuntimeIssue(key, message) {
+  runtimeIssues.set(key, message);
+  renderRuntimeIssues();
+}
+
+function clearRuntimeIssue(key) {
+  if (runtimeIssues.delete(key)) renderRuntimeIssues();
+}
+
+function formatRenderIssue(scope, error) {
+  const detail = error?.message || String(error || 'Error desconocido.');
+  return `${scope}: ${detail}`;
+}
 
 // ── RENDER SERVICIOS ──
 function renderServicios(serviciosData={}, preciosData={}) {
@@ -140,6 +179,7 @@ renderServicios({}, PRECIOS_DEFAULT);
 actualizarSelectServicios();
 
 onSnapshot(doc(db,'config','site'), snap => {
+  clearRuntimeIssue('site');
   if (!snap.exists()) return;
   const d = snap.data();
   if (d.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=d.logo);
@@ -149,26 +189,37 @@ onSnapshot(doc(db,'config','site'), snap => {
     const fecha = document.getElementById('inp-fecha')?.value;
     if (fecha) window.cargarSlots();
   }
+}, error => {
+  setRuntimeIssue('site', formatRenderIssue('Configuracion', error));
 });
 
 onSnapshot(doc(db,'config','precios'), snap => {
+  clearRuntimeIssue('precios');
   if (!snap.exists()) return;
   preciosActuales = {...PRECIOS_DEFAULT, ...snap.data()};
   renderServicios(serviciosActuales, preciosActuales);
   actualizarSelectServicios();
+}, error => {
+  setRuntimeIssue('precios', formatRenderIssue('Precios', error));
 });
 
 onSnapshot(doc(db,'config','servicios'), snap => {
+  clearRuntimeIssue('servicios');
   if (!snap.exists()) return;
   serviciosActuales = snap.data();
   renderServicios(serviciosActuales, preciosActuales);
   actualizarSelectServicios();
+}, error => {
+  setRuntimeIssue('servicios', formatRenderIssue('Servicios', error));
 });
 
 onSnapshot(collection(db,'galeria'), snap => {
+  clearRuntimeIssue('galeria');
   const fotos = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.orden||0)-(b.orden||0));
   renderGaleriaPublica(fotos);
   renderGaleriaAdmin(fotos);
+}, error => {
+  setRuntimeIssue('galeria', formatRenderIssue('Galeria', error));
 });
 
 function actualizarSelectServicios() {
@@ -184,7 +235,7 @@ function actualizarSelectServicios() {
   cats.forEach(cat => {
     const og = document.createElement('optgroup');
     og.label = cat.replace(/^[^\s]+ /,'');
-    allKeys.filter(s=>s.cat===cat).forEach(s => {
+    visibleKeys.filter(s=>s.cat===cat).forEach(s => {
       const info = serviciosActuales[s.id] || {};
       const nombre = info.nombre || s.nombre;
       const precio = info.precio || preciosActuales[s.id] || PRECIOS_DEFAULT[s.id] || 0;
@@ -210,8 +261,12 @@ window.cargarSlots = async function() {
   if (unsubSlots) { unsubSlots(); unsubSlots=null; }
   document.getElementById('slots-grid').innerHTML='<div class="slots-loading"><span class="spin">⏳</span> Cargando...</div>';
   unsubSlots = onSnapshot(doc(db,'slots',fecha), snap => {
+    clearRuntimeIssue('slots');
     const booked = snap.exists() ? (snap.data().booked||[]) : [];
     renderSlots(booked);
+  }, error => {
+    setRuntimeIssue('slots', formatRenderIssue('Horarios', error));
+    renderSlotsError(error?.message || 'No se pudieron cargar los horarios.');
   });
 };
 
@@ -227,6 +282,12 @@ function renderSlots(booked) {
     if (!taken) b.onclick = () => selSlot(h,b);
     grid.appendChild(b);
   });
+}
+
+function renderSlotsError(message) {
+  const grid = document.getElementById('slots-grid');
+  if (!grid) return;
+  grid.innerHTML = `<div class="slots-ph" style="color:#ff6b6b">${message}</div>`;
 }
 
 function selSlot(h, el) {
@@ -263,6 +324,7 @@ window.enviarCita = async function(e) {
         body:JSON.stringify({_subject:'💅 Nueva cita — Dulce Rosa',Nombre:nombre,Teléfono:tel,Servicio:servicio,Fecha:fecha,Hora:hora,Nota:nota||'Sin comentarios',_template:'table'})
       });
     } catch{}
+    clearRuntimeIssue('citas-form');
     mostrarToast(`🌸 ¡Cita enviada! Tu cita es el ${fecha} a las ${to12h(hora)}. Te contactaremos para confirmar el abono.`,false);
     btn.textContent='✅ ¡Cita solicitada!'; btn.style.background='linear-gradient(135deg,#4CAF50,#66BB6A)';
     // Show WhatsApp confirmation button
@@ -271,6 +333,8 @@ window.enviarCita = async function(e) {
     if(waBtn){ waBtn.href=`https://wa.me/573245683032?text=${waMsg}`; waBtn.style.display='flex'; }
   } catch(err) {
     console.error('Error cita:',err);
+    const message = err?.message || 'Error al enviar la cita.';
+    setRuntimeIssue('citas-form', formatRenderIssue('Citas', err));
     mostrarToast('❌ Error al enviar. Intenta de nuevo.',true);
     btn.textContent='✦ Solicitar cita ahora'; btn.disabled=false;
   }

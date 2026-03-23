@@ -76,30 +76,7 @@
     <h2 class="section-title" style="color:#fff">Promociones <em>del mes</em></h2>
     <div class="section-divider"></div>
   </div>
-  <div id="promos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px">
-    <!-- Loaded from admin or defaults -->
-    <div class="promo-card reveal">
-      <div class="promo-badge">🔥 Más popular</div>
-      <div class="promo-title">Combo Completo</div>
-      <div class="promo-desc">Semipermanente manos + pies + retiro incluido</div>
-      <div class="promo-precio"><span class="promo-antes">$75.000</span> <span class="promo-ahora">$60.000</span></div>
-      <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero este combo!</button>
-    </div>
-    <div class="promo-card reveal" style="transition-delay:.1s">
-      <div class="promo-badge" style="background:var(--gold)">⭐ Nuevo</div>
-      <div class="promo-title">Primera vez</div>
-      <div class="promo-desc">20% de descuento en tu primera cita con nosotras</div>
-      <div class="promo-precio"><span class="promo-ahora">20% OFF</span></div>
-      <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">Agendar ahora</button>
-    </div>
-    <div class="promo-card reveal" style="transition-delay:.2s">
-      <div class="promo-badge" style="background:#4CAF50">💚 Referidos</div>
-      <div class="promo-title">Trae una amiga</div>
-      <div class="promo-desc">Tú y tu amiga obtienen descuento del 15% cada una</div>
-      <div class="promo-precio"><span class="promo-ahora">15% OFF x2</span></div>
-      <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">Agendar para las dos</button>
-    </div>
-  </div>
+  <div id="promos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px"></div>
 </section>
 
 <!-- ═══ TESTIMONIOS ═══ -->
@@ -454,6 +431,7 @@
       </div>
       <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin:13px 0 7px">Fotos actuales (toca ✕ para eliminar):</p>
       <div class="galeria-admin-grid" id="galeria-admin-grid"></div>
+    </div>
 
     <!-- PROMOS TAB -->
     <div class="tab-pane" id="tab-promos">

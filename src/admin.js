@@ -1,37 +1,134 @@
-import { db, collection, doc, getDoc, setDoc, addDoc, getDocs, deleteDoc, onSnapshot, updateDoc, arrayRemove, serverTimestamp } from './firebase.js';
-import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, formatCOP, to12h } from './data.js';
+import {
+  db,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  updateDoc,
+  arrayRemove,
+  serverTimestamp,
+} from './firebase.js';
+import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, to12h } from './data.js';
 
 let pendingFoto = null;
 let serviciosEnMemoria = {};
 window._svcImages = {};
 
-// ══════════════════════════════════════════
-// FIREBASE REAL — usa window.__db (firebase-init.js)
-// para reseñas y promos, evitando Render/cold-start
-// ══════════════════════════════════════════
+const PROMOS_COLLECTION = 'promociones';
+const RESENAS_COLLECTION = 'resenas';
+
+const realtimeState = {
+  promosAdmin: { items: [], loading: false, error: null, unsubscribe: null },
+  promosPublic: { items: [], loading: false, error: null, unsubscribe: null },
+  resenasAdmin: { items: [], loading: false, error: null, unsubscribe: null },
+  resenasPublic: { items: [], loading: false, error: null, unsubscribe: null },
+};
+
+let realFBPromise = null;
+
 function realFB() {
-  // Espera hasta que firebase-init.js haya cargado __db y __fb
-  return new Promise((resolve) => {
-    if (window.__db && window.__fb) { resolve({ db: window.__db, fb: window.__fb }); return; }
-    window.addEventListener('fb-ready', () => resolve({ db: window.__db, fb: window.__fb }), { once: true });
-    // fallback timeout: 5s
-    setTimeout(() => resolve({ db: window.__db, fb: window.__fb }), 5000);
+  if (realFBPromise) return realFBPromise;
+
+  realFBPromise = new Promise((resolve, reject) => {
+    if (window.__db && window.__fb) {
+      resolve({ db: window.__db, fb: window.__fb });
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      realFBPromise = null;
+      reject(new Error('Firebase real no esta disponible en la pagina.'));
+    }, 7000);
+
+    window.addEventListener(
+      'fb-ready',
+      () => {
+        clearTimeout(timeoutId);
+        if (window.__db && window.__fb) {
+          resolve({ db: window.__db, fb: window.__fb });
+          return;
+        }
+        realFBPromise = null;
+        reject(new Error('Firebase real reporto una inicializacion incompleta.'));
+      },
+      { once: true },
+    );
   });
+
+  return realFBPromise;
 }
 
-async function getArr(key) {
-  try {
-    const { db: rdb, fb } = await realFB();
-    const snap = await fb.getDoc(fb.doc(rdb, 'config', key));
-    if (!snap.exists()) return [];
-    const d = snap.data();
-    return Array.isArray(d.lista) ? d.lista : [];
-  } catch (e) { console.warn('getArr error', key, e); return []; }
+function formatError(error, fallback = 'Error desconocido.') {
+  const message = error?.message || String(error || fallback);
+
+  if (error?.code === 'not-found' && /database \(default\) does not exist/i.test(message)) {
+    return `Firestore no esta activado en el proyecto "dulce-rosa". ${message}`;
+  }
+
+  if (error?.code === 'permission-denied') {
+    return `Firestore rechazo la operacion por permisos o reglas. ${message}`;
+  }
+
+  return message;
 }
 
-async function saveArr(key, lista) {
-  const { db: rdb, fb } = await realFB();
-  await fb.setDoc(fb.doc(rdb, 'config', key), { lista });
+function escapeHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function sortByCreatedDesc(items) {
+  return [...items].sort((left, right) => Number(right.creadoMs || 0) - Number(left.creadoMs || 0));
+}
+
+function normalizeDoc(snapshot) {
+  return { id: snapshot.id, ...snapshot.data() };
+}
+
+function showStateMessage(message, isError = false) {
+  const color = isError ? '#ff6b6b' : 'rgba(255,255,255,.62)';
+  return `<div class="no-citas" style="color:${color}">${escapeHtml(message)}</div>`;
+}
+
+function publicErrorCard(message, promoMode = false) {
+  const cardClass = promoMode ? 'promo-card' : 'testimonio-card';
+  return `
+    <div class="${cardClass} visible" style="grid-column:1/-1;box-shadow:none;border:1px solid rgba(255,107,107,.35)">
+      <div style="font-size:.82rem;color:#ff6b6b;line-height:1.6">${escapeHtml(message)}</div>
+    </div>
+  `;
+}
+
+function tabPane(tabId) {
+  return document.getElementById(`tab-${tabId}`);
+}
+
+function clearAdminError(tabId) {
+  const pane = tabPane(tabId);
+  const box = pane?.querySelector('.admin-inline-error');
+  if (box) box.remove();
+}
+
+function showAdminError(tabId, message) {
+  const pane = tabPane(tabId);
+  if (!pane) return;
+
+  let box = pane.querySelector('.admin-inline-error');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'admin-inline-error';
+    box.style.cssText = 'margin-bottom:12px;padding:10px 14px;border-radius:10px;background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.35);color:#ff6b6b;font-size:.8rem;';
+    pane.prepend(box);
+  }
+
+  box.textContent = message;
 }
 
 export function showOk(id) {
@@ -41,507 +138,1030 @@ export function showOk(id) {
   setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// ── TABS ──
-window.switchTab = function(tab) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+window.switchTab = function (tab) {
+  document.querySelectorAll('.tab-btn').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
+  document.querySelectorAll('.tab-pane').forEach((pane) => pane.classList.toggle('active', pane.id === `tab-${tab}`));
 };
 
-// ── CITAS ──
-window.renderCitas = async function() {
+window.renderCitas = async function () {
   const q = (document.getElementById('filtro-citas') || { value: '' }).value.toLowerCase();
   const lista = document.getElementById('lista-citas');
   if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+
+  lista.innerHTML = '<div class="no-citas"><span class="spin">...</span> Cargando...</div>';
   try {
     const snap = await Promise.race([
       getDocs(collection(db, 'citas')),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al consultar citas en Render.')), 12000)),
     ]);
-    const citas = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    const citas = snap.docs.map((item) => ({ ...item.data(), id: item.id }));
     const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+
+    clearAdminError('citas');
     document.getElementById('stat-total').textContent = citas.length;
-    document.getElementById('stat-hoy').textContent = citas.filter(c => c.fecha === hoy).length;
-    document.getElementById('stat-prox').textContent = citas.filter(c => c.fecha >= hoy).length;
-    const fil = citas
-      .filter(c => !q || c.nombre?.toLowerCase().includes(q) || c.servicio?.toLowerCase().includes(q) || c.fecha?.includes(q) || c.tel?.includes(q))
-      .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
-    if (!fil.length) { lista.innerHTML = '<div class="no-citas">No hay citas aún 🌸</div>'; return; }
-    lista.innerHTML = fil.map(c => `
-      <div class="cita-item">
-        <div class="cita-item-header">
-          <div class="cita-name">👤 ${c.nombre}</div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <span class="cita-badge">${c.fecha} · ${to12h(c.hora)}</span>
-            <button class="btn-delete" onclick="eliminarCita('${c.id}','${c.fecha}','${c.hora}')">✕</button>
+    document.getElementById('stat-hoy').textContent = citas.filter((cita) => cita.fecha === hoy).length;
+    document.getElementById('stat-prox').textContent = citas.filter((cita) => cita.fecha >= hoy).length;
+
+    const filtradas = citas
+      .filter(
+        (cita) =>
+          !q ||
+          cita.nombre?.toLowerCase().includes(q) ||
+          cita.servicio?.toLowerCase().includes(q) ||
+          cita.fecha?.includes(q) ||
+          cita.tel?.includes(q),
+      )
+      .sort((left, right) => `${left.fecha}${left.hora}`.localeCompare(`${right.fecha}${right.hora}`));
+
+    if (!filtradas.length) {
+      lista.innerHTML = '<div class="no-citas">No hay citas aun.</div>';
+      return;
+    }
+
+    lista.innerHTML = filtradas
+      .map(
+        (cita) => `
+          <div class="cita-item">
+            <div class="cita-item-header">
+              <div class="cita-name">Cliente: ${escapeHtml(cita.nombre || 'Sin nombre')}</div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <span class="cita-badge">${escapeHtml(cita.fecha || '')} · ${to12h(cita.hora)}</span>
+                <button class="btn-delete" onclick="eliminarCita('${cita.id}','${escapeHtml(cita.fecha || '')}','${escapeHtml(cita.hora || '')}')">x</button>
+              </div>
+            </div>
+            <div class="cita-details">
+              <div>Tel: ${escapeHtml(cita.tel || '')}</div>
+              <div>Servicio: ${escapeHtml((cita.servicio || '').split('—')[0].trim() || 'Sin servicio')}</div>
+              ${cita.nota ? `<div style="grid-column:span 2">Nota: ${escapeHtml(cita.nota)}</div>` : ''}
+            </div>
           </div>
-        </div>
-        <div class="cita-details">
-          <div>📞 ${c.tel}</div>
-          <div>💅 ${(c.servicio || '').split('—')[0].trim()}</div>
-          ${c.nota ? `<div style="grid-column:span 2">📝 ${c.nota}</div>` : ''}
-        </div>
-      </div>`).join('');
-  } catch (e) {
-    lista.innerHTML = `<div class="no-citas">❌ ${e?.message === 'timeout' ? 'Toca 🔄 Actualizar.' : e?.message || e}</div>`;
+        `,
+      )
+      .join('');
+  } catch (error) {
+    const message = formatError(error, 'No se pudieron cargar las citas.');
+    showAdminError('citas', message);
+    lista.innerHTML = showStateMessage(message, true);
   }
 };
 
-window.eliminarCita = async function(id, fecha, hora) {
-  if (!confirm('¿Eliminar esta cita?')) return;
-  await deleteDoc(doc(db, 'citas', id));
-  try { await updateDoc(doc(db, 'slots', fecha), { booked: arrayRemove(hora) }); } catch {}
-  window.renderCitas();
+window.eliminarCita = async function (id, fecha, hora) {
+  if (!confirm('Eliminar esta cita?')) return;
+
+  try {
+    await deleteDoc(doc(db, 'citas', id));
+    try {
+      await updateDoc(doc(db, 'slots', fecha), { booked: arrayRemove(hora) });
+    } catch (error) {
+      showAdminError('citas', formatError(error, 'La cita se elimino, pero no se pudo liberar el horario.'));
+    }
+    await window.renderCitas();
+  } catch (error) {
+    showAdminError('citas', formatError(error, 'No se pudo eliminar la cita.'));
+  }
 };
 
-window.exportarCitas = async function() {
+window.exportarCitas = async function () {
   const snap = await getDocs(collection(db, 'citas'));
-  const citas = snap.docs.map(d => d.data());
-  if (!citas.length) { alert('No hay citas.'); return; }
-  let txt = 'CITAS — DULCE ROSA NAILS SPA\n' + '='.repeat(44) + '\n\n';
-  citas.sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora))
-    .forEach((c, i) => { txt += `${i + 1}. ${c.nombre}\n   Tel: ${c.tel}\n   Servicio: ${c.servicio}\n   Fecha: ${c.fecha} a las ${to12h(c.hora)}\n${c.nota ? '   Nota: ' + c.nota + '\n' : ''}\n`; });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
-  a.download = 'citas-dulce-rosa.txt'; a.click();
+  const citas = snap.docs.map((item) => item.data());
+  if (!citas.length) {
+    alert('No hay citas.');
+    return;
+  }
+
+  let txt = 'CITAS - DULCE ROSA NAILS SPA\n' + '='.repeat(44) + '\n\n';
+  citas
+    .sort((left, right) => `${left.fecha}${left.hora}`.localeCompare(`${right.fecha}${right.hora}`))
+    .forEach((cita, index) => {
+      txt += `${index + 1}. ${cita.nombre}\n   Tel: ${cita.tel}\n   Servicio: ${cita.servicio}\n   Fecha: ${cita.fecha} a las ${to12h(cita.hora)}\n`;
+      if (cita.nota) txt += `   Nota: ${cita.nota}\n`;
+      txt += '\n';
+    });
+
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+  link.download = 'citas-dulce-rosa.txt';
+  link.click();
 };
 
-// ── CONFIG ──
-window.cargarAdminConfig = async function() {
+window.cargarAdminConfig = async function () {
   const el = document.getElementById('a-nequi');
   if (el) el.value = '324 568 3032';
-  document.querySelectorAll('.hora-chip').forEach(c => c.classList.add('activa'));
+  document.querySelectorAll('.hora-chip').forEach((chip) => chip.classList.add('activa'));
+
   try {
     const snap = await getDoc(doc(db, 'config', 'site'));
-    const d = snap.exists() ? snap.data() : {};
-    if (d.nequi && el) el.value = d.nequi;
-    const activas = d.horarios || HORAS_DEFAULT;
-    document.querySelectorAll('.hora-chip').forEach(chip => chip.classList.toggle('activa', activas.includes(chip.dataset.hora)));
+    const data = snap.exists() ? snap.data() : {};
+    clearAdminError('config');
+    if (data.nequi && el) el.value = data.nequi;
+    const activas = data.horarios || HORAS_DEFAULT;
+    document.querySelectorAll('.hora-chip').forEach((chip) => chip.classList.toggle('activa', activas.includes(chip.dataset.hora)));
     window._horasDisponibles = activas;
-  } catch (e) { console.warn('Config load:', e); }
+  } catch (error) {
+    showAdminError('config', formatError(error, 'No se pudo cargar la configuracion.'));
+  }
 };
 
-window.guardarConfig = async function() {
+window.guardarConfig = async function () {
   const btn = document.querySelector('#tab-config .btn-save');
-  if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
+  if (btn) {
+    btn.textContent = 'Guardando...';
+    btn.disabled = true;
+  }
+
   const nequi = document.getElementById('a-nequi').value.trim();
-  const horarios = [...document.querySelectorAll('.hora-chip.activa')].map(c => c.dataset.hora);
+  const horarios = [...document.querySelectorAll('.hora-chip.activa')].map((chip) => chip.dataset.hora);
   const activas = horarios.length ? horarios : [...HORAS_DEFAULT];
   window._horasDisponibles = activas;
-  document.querySelectorAll('.nequi-num').forEach(el => el.textContent = nequi);
-  showOk('ok-config');
+  document.querySelectorAll('.nequi-num').forEach((item) => {
+    item.textContent = nequi;
+  });
+
   try {
     const ref = doc(db, 'config', 'site');
     const snap = await getDoc(ref);
     const data = snap.exists() ? snap.data() : {};
     await setDoc(ref, { ...data, nequi, horarios: activas });
-  } catch (e) { console.warn('Config save:', e); }
-  if (btn) { btn.textContent = '💾 Guardar configuración'; btn.disabled = false; }
+    clearAdminError('config');
+    showOk('ok-config');
+  } catch (error) {
+    showAdminError('config', formatError(error, 'No se pudo guardar la configuracion.'));
+  } finally {
+    if (btn) {
+      btn.textContent = 'Guardar configuracion';
+      btn.disabled = false;
+    }
+  }
 };
 
-window.toggleHora = function(chip) { chip.classList.toggle('activa'); };
+window.toggleHora = function (chip) {
+  chip.classList.toggle('activa');
+};
 
-// ── PRECIOS ──
-window.cargarAdminPrecios = async function() {
-  Object.keys(PRECIOS_DEFAULT).forEach(k => { const el = document.getElementById('ap-' + k); if (el && !el.value) el.value = PRECIOS_DEFAULT[k]; });
+window.cargarAdminPrecios = async function () {
+  Object.keys(PRECIOS_DEFAULT).forEach((key) => {
+    const input = document.getElementById(`ap-${key}`);
+    if (input && !input.value) input.value = PRECIOS_DEFAULT[key];
+  });
+
   try {
     const snap = await getDoc(doc(db, 'config', 'precios'));
-    const p = snap.exists() ? snap.data() : PRECIOS_DEFAULT;
-    Object.keys(PRECIOS_DEFAULT).forEach(k => { const el = document.getElementById('ap-' + k); if (el) el.value = p[k] || PRECIOS_DEFAULT[k]; });
-  } catch (e) { console.warn('Precios load:', e); }
+    const precios = snap.exists() ? snap.data() : PRECIOS_DEFAULT;
+    clearAdminError('precios');
+    Object.keys(PRECIOS_DEFAULT).forEach((key) => {
+      const input = document.getElementById(`ap-${key}`);
+      if (input) input.value = precios[key] || PRECIOS_DEFAULT[key];
+    });
+  } catch (error) {
+    showAdminError('precios', formatError(error, 'No se pudieron cargar los precios.'));
+  }
 };
 
-window.guardarPrecios = async function() {
+window.guardarPrecios = async function () {
   const precios = {};
-  Object.keys(PRECIOS_DEFAULT).forEach(k => { const el = document.getElementById('ap-' + k); if (el) precios[k] = Number(el.value) || PRECIOS_DEFAULT[k]; });
-  try { await setDoc(doc(db, 'config', 'precios'), precios); showOk('ok-precios'); }
-  catch (e) { console.warn('Precios save:', e); }
+  Object.keys(PRECIOS_DEFAULT).forEach((key) => {
+    const input = document.getElementById(`ap-${key}`);
+    if (input) precios[key] = Number(input.value) || PRECIOS_DEFAULT[key];
+  });
+
+  try {
+    await setDoc(doc(db, 'config', 'precios'), precios);
+    clearAdminError('precios');
+    showOk('ok-precios');
+  } catch (error) {
+    showAdminError('precios', formatError(error, 'No se pudieron guardar los precios.'));
+  }
 };
 
-// ── SERVICIOS ──
-window.cargarAdminServicios = async function() {
-  const cont = document.getElementById('svc-edit-list'); if (!cont) return;
+window.cargarAdminServicios = async function () {
+  const cont = document.getElementById('svc-edit-list');
+  if (!cont) return;
+
   _renderSvcAdmin(cont, serviciosEnMemoria);
   try {
     const snap = await getDoc(doc(db, 'config', 'servicios'));
-    if (snap.exists()) { serviciosEnMemoria = snap.data(); _renderSvcAdmin(cont, serviciosEnMemoria); }
-  } catch (e) { console.warn('servicios load:', e); }
+    if (snap.exists()) serviciosEnMemoria = snap.data();
+    clearAdminError('servicios');
+    _renderSvcAdmin(cont, serviciosEnMemoria);
+  } catch (error) {
+    showAdminError('servicios', formatError(error, 'No se pudieron cargar los servicios.'));
+  }
 };
 
 function _renderSvcAdmin(cont, serviciosData) {
   cont.innerHTML = '';
+
   const btnNuevo = document.createElement('button');
-  btnNuevo.className = 'btn-nuevo-svc'; btnNuevo.textContent = '＋ Nuevo servicio';
+  btnNuevo.className = 'btn-nuevo-svc';
+  btnNuevo.textContent = '+ Nuevo servicio';
   btnNuevo.onclick = () => window.abrirFormNuevoServicio();
   cont.appendChild(btnNuevo);
+
   const customKeys = serviciosData._custom || [];
-  const allKeys = [...SERVICIO_KEYS, ...customKeys.filter(c => !SERVICIO_KEYS.find(k => k.id === c.id))];
-  const cats = [...new Set(allKeys.map(s => s.cat))];
-  cats.forEach(cat => {
-    const svcs = allKeys.filter(s => s.cat === cat && !(serviciosData[s.id]?.hidden));
-    if (!svcs.length) return;
+  const allKeys = [...SERVICIO_KEYS, ...customKeys.filter((custom) => !SERVICIO_KEYS.find((builtin) => builtin.id === custom.id))];
+  const cats = [...new Set(allKeys.map((service) => service.cat))];
+
+  cats.forEach((cat) => {
+    const services = allKeys.filter((service) => service.cat === cat && !(serviciosData[service.id]?.hidden));
+    if (!services.length) return;
+
     const catTitle = document.createElement('div');
-    catTitle.className = 'svc-cat-title'; catTitle.textContent = cat;
+    catTitle.className = 'svc-cat-title';
+    catTitle.textContent = cat;
     cont.appendChild(catTitle);
-    svcs.forEach(s => {
-      const info = serviciosData[s.id] || {};
-      const nombre = info.nombre || s.nombre;
+
+    services.forEach((service) => {
+      const info = serviciosData[service.id] || {};
+      const nombre = info.nombre || service.nombre;
       const imagen = info.imagen || null;
-      const isBuiltin = !!SERVICIO_KEYS.find(k => k.id === s.id);
-      const card = document.createElement('div'); card.className = 'svc-edit-card';
+      const isBuiltin = !!SERVICIO_KEYS.find((item) => item.id === service.id);
+
+      const card = document.createElement('div');
+      card.className = 'svc-edit-card';
+
       const delBtn = document.createElement('button');
-      delBtn.className = 'btn-del-svc'; delBtn.textContent = '✕ Eliminar';
-      delBtn.onclick = () => window.eliminarServicio(s.id, isBuiltin);
+      delBtn.className = 'btn-del-svc';
+      delBtn.textContent = 'x Eliminar';
+      delBtn.onclick = () => window.eliminarServicio(service.id, isBuiltin);
       card.appendChild(delBtn);
-      const header = document.createElement('div'); header.className = 'svc-edit-card-header';
-      header.innerHTML = `<div class="svc-edit-img" id="svc-img-preview-${s.id}">${imagen ? `<img src="${imagen}" alt=""/>` : `<span>${s.emoji || '💅'}</span>`}</div>
-        <label class="btn-img-svc">📷 Imagen<input type="file" accept="image/*" style="display:none" onchange="subirImagenServicio('${s.id}',this)"/></label>`;
+
+      const header = document.createElement('div');
+      header.className = 'svc-edit-card-header';
+      header.innerHTML = `
+        <div class="svc-edit-img" id="svc-img-preview-${service.id}">${imagen ? `<img src="${imagen}" alt=""/>` : `<span>${service.emoji || 'N'}</span>`}</div>
+        <label class="btn-img-svc">Imagen<input type="file" accept="image/*" style="display:none" onchange="subirImagenServicio('${service.id}',this)"/></label>
+      `;
       card.appendChild(header);
+
       card.innerHTML += `
         <div class="a-row">
-          <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${s.id}" value="${nombre.replace(/"/g,'&quot;')}"/></div>
-          <div class="a-field"><label class="a-label">Precio</label><input class="a-input" type="number" id="svc-precio-${s.id}" value="${info.precio || PRECIOS_DEFAULT[s.id] || 0}"/></div>
+          <div class="a-field"><label class="a-label">Nombre</label><input class="a-input" id="svc-name-${service.id}" value="${escapeHtml(nombre)}"/></div>
+          <div class="a-field"><label class="a-label">Precio</label><input class="a-input" type="number" id="svc-precio-${service.id}" value="${info.precio || PRECIOS_DEFAULT[service.id] || 0}"/></div>
         </div>
-        <div class="a-field"><label class="a-label">Descripción corta</label><input class="a-input" id="svc-desc-${s.id}" value="${(info.descripcion || s.descripcion || '').replace(/"/g,'&quot;')}"/></div>
-        <div class="a-field"><label class="a-label">Detalles completos</label><textarea class="a-textarea" id="svc-det-${s.id}">${info.detalles || s.detalles || ''}</textarea></div>`;
+        <div class="a-field"><label class="a-label">Descripcion corta</label><input class="a-input" id="svc-desc-${service.id}" value="${escapeHtml(info.descripcion || service.descripcion || '')}"/></div>
+        <div class="a-field"><label class="a-label">Detalles completos</label><textarea class="a-textarea" id="svc-det-${service.id}">${escapeHtml(info.detalles || service.detalles || '')}</textarea></div>
+      `;
+
       cont.appendChild(card);
     });
   });
 }
 
-window.subirImagenServicio = function(id, input) {
-  const file = input.files[0]; if (!file) return;
-  comprimirImagen(file, 600, 0.88).then(b64 => {
+window.subirImagenServicio = function (id, input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  comprimirImagen(file, 600, 0.88).then((b64) => {
     window._svcImages[id] = b64;
-    const prev = document.getElementById('svc-img-preview-' + id);
+    const prev = document.getElementById(`svc-img-preview-${id}`);
     if (prev) prev.innerHTML = `<img src="${b64}" style="width:52px;height:52px;border-radius:8px;object-fit:cover"/>`;
   });
 };
 
-window.guardarServicios = async function() {
+window.guardarServicios = async function () {
   const btn = document.querySelector('#tab-servicios .btn-save');
-  if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
+  if (btn) {
+    btn.textContent = 'Guardando...';
+    btn.disabled = true;
+  }
+
   try {
     const snap = await getDoc(doc(db, 'config', 'servicios'));
     const existing = snap.exists() ? snap.data() : {};
     const customKeys = existing._custom || [];
-    const allKeys = [...SERVICIO_KEYS, ...customKeys.filter(c => !SERVICIO_KEYS.find(k => k.id === c.id))];
+    const allKeys = [...SERVICIO_KEYS, ...customKeys.filter((custom) => !SERVICIO_KEYS.find((builtin) => builtin.id === custom.id))];
     const servicios = { _custom: customKeys };
-    allKeys.forEach(s => {
-      const nameEl = document.getElementById('svc-name-' + s.id); if (!nameEl) return;
-      servicios[s.id] = {
-        nombre: nameEl.value.trim() || s.nombre,
-        precio: Number(document.getElementById('svc-precio-' + s.id)?.value) || 0,
-        descripcion: document.getElementById('svc-desc-' + s.id)?.value.trim() || '',
-        detalles: document.getElementById('svc-det-' + s.id)?.value.trim() || '',
-        imagen: window._svcImages[s.id] || existing[s.id]?.imagen || null,
-        emoji: s.emoji || '💅', cat: s.cat, desde: s.desde || false,
-        hidden: existing[s.id]?.hidden || false
+
+    allKeys.forEach((service) => {
+      const nameEl = document.getElementById(`svc-name-${service.id}`);
+      if (!nameEl) return;
+
+      servicios[service.id] = {
+        nombre: nameEl.value.trim() || service.nombre,
+        precio: Number(document.getElementById(`svc-precio-${service.id}`)?.value) || 0,
+        descripcion: document.getElementById(`svc-desc-${service.id}`)?.value.trim() || '',
+        detalles: document.getElementById(`svc-det-${service.id}`)?.value.trim() || '',
+        imagen: window._svcImages[service.id] || existing[service.id]?.imagen || null,
+        emoji: service.emoji || 'N',
+        cat: service.cat,
+        desde: service.desde || false,
+        hidden: existing[service.id]?.hidden || false,
       };
     });
+
     await setDoc(doc(db, 'config', 'servicios'), servicios);
-    serviciosEnMemoria = servicios; window._svcImages = {};
+    serviciosEnMemoria = servicios;
+    window._svcImages = {};
+    clearAdminError('servicios');
     showOk('ok-servicios');
-  } catch (e) { alert('Error: ' + (e?.message || e)); }
-  if (btn) { btn.textContent = '💾 Guardar cambios'; btn.disabled = false; }
+  } catch (error) {
+    showAdminError('servicios', formatError(error, 'No se pudieron guardar los servicios.'));
+  } finally {
+    if (btn) {
+      btn.textContent = 'Guardar cambios';
+      btn.disabled = false;
+    }
+  }
 };
 
-window.abrirFormNuevoServicio = function() {
-  ['ns-nombre','ns-precio','ns-desc','ns-detalles'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const catEl = document.getElementById('ns-cat'); if (catEl) catEl.value = '✨ Uñas';
-  const ov = document.getElementById('overlay-nuevo-svc');
-  if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
+window.abrirFormNuevoServicio = function () {
+  ['ns-nombre', 'ns-precio', 'ns-desc', 'ns-detalles'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  const catEl = document.getElementById('ns-cat');
+  if (catEl) catEl.value = '✨ Uñas';
+
+  const overlay = document.getElementById('overlay-nuevo-svc');
+  if (overlay) {
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+  }
 };
 
-window.guardarNuevoServicio = async function() {
+window.guardarNuevoServicio = async function () {
   const nombre = document.getElementById('ns-nombre')?.value.trim();
-  if (!nombre) { alert('El nombre es obligatorio.'); return; }
-  const id = 'custom_' + Date.now();
-  const snap = await getDoc(doc(db, 'config', 'servicios'));
-  const existing = snap.exists() ? snap.data() : {};
-  const cat = document.getElementById('ns-cat')?.value || '✨ Uñas';
-  const customKeys = [...(existing._custom || [])];
-  customKeys.push({ id, nombre, cat, emoji: '💅', desde: false });
-  const newData = { ...existing, _custom: customKeys, [id]: {
-    nombre, precio: Number(document.getElementById('ns-precio')?.value) || 0,
-    descripcion: document.getElementById('ns-desc')?.value.trim() || '',
-    detalles: document.getElementById('ns-detalles')?.value.trim() || '',
-    imagen: null, emoji: '💅', cat, desde: false, hidden: false
-  }};
-  await setDoc(doc(db, 'config', 'servicios'), newData);
-  serviciosEnMemoria = newData;
-  const ov = document.getElementById('overlay-nuevo-svc');
-  if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
-  const cont = document.getElementById('svc-edit-list');
-  if (cont) _renderSvcAdmin(cont, newData);
+  if (!nombre) {
+    alert('El nombre es obligatorio.');
+    return;
+  }
+
+  try {
+    const id = `custom_${Date.now()}`;
+    const snap = await getDoc(doc(db, 'config', 'servicios'));
+    const existing = snap.exists() ? snap.data() : {};
+    const cat = document.getElementById('ns-cat')?.value || '✨ Uñas';
+    const customKeys = [...(existing._custom || [])];
+
+    customKeys.push({ id, nombre, cat, emoji: 'N', desde: false });
+
+    const newData = {
+      ...existing,
+      _custom: customKeys,
+      [id]: {
+        nombre,
+        precio: Number(document.getElementById('ns-precio')?.value) || 0,
+        descripcion: document.getElementById('ns-desc')?.value.trim() || '',
+        detalles: document.getElementById('ns-detalles')?.value.trim() || '',
+        imagen: null,
+        emoji: 'N',
+        cat,
+        desde: false,
+        hidden: false,
+      },
+    };
+
+    await setDoc(doc(db, 'config', 'servicios'), newData);
+    serviciosEnMemoria = newData;
+    clearAdminError('servicios');
+
+    const overlay = document.getElementById('overlay-nuevo-svc');
+    if (overlay) {
+      overlay.classList.remove('show');
+      document.body.style.overflow = '';
+    }
+
+    const cont = document.getElementById('svc-edit-list');
+    if (cont) _renderSvcAdmin(cont, newData);
+  } catch (error) {
+    showAdminError('servicios', formatError(error, 'No se pudo crear el servicio.'));
+  }
 };
 
-window.eliminarServicio = async function(id, isBuiltin) {
-  if (!confirm(isBuiltin ? '¿Ocultar este servicio?' : '¿Eliminar este servicio?')) return;
-  const snap = await getDoc(doc(db, 'config', 'servicios'));
-  const existing = snap.exists() ? snap.data() : {};
-  const customKeys = (existing._custom || []).filter(c => c.id !== id);
-  const newData = { ...existing, _custom: customKeys };
-  if (isBuiltin) newData[id] = { ...(existing[id] || {}), hidden: true };
-  else delete newData[id];
-  await setDoc(doc(db, 'config', 'servicios'), newData);
-  serviciosEnMemoria = newData;
-  const cont = document.getElementById('svc-edit-list');
-  if (cont) _renderSvcAdmin(cont, newData);
+window.eliminarServicio = async function (id, isBuiltin) {
+  if (!confirm(isBuiltin ? 'Ocultar este servicio?' : 'Eliminar este servicio?')) return;
+
+  try {
+    const snap = await getDoc(doc(db, 'config', 'servicios'));
+    const existing = snap.exists() ? snap.data() : {};
+    const customKeys = (existing._custom || []).filter((item) => item.id !== id);
+    const newData = { ...existing, _custom: customKeys };
+
+    if (isBuiltin) newData[id] = { ...(existing[id] || {}), hidden: true };
+    else delete newData[id];
+
+    await setDoc(doc(db, 'config', 'servicios'), newData);
+    serviciosEnMemoria = newData;
+    clearAdminError('servicios');
+
+    const cont = document.getElementById('svc-edit-list');
+    if (cont) _renderSvcAdmin(cont, newData);
+  } catch (error) {
+    showAdminError('servicios', formatError(error, 'No se pudo eliminar el servicio.'));
+  }
 };
 
-// ── LOGO ──
-window.previsualizarLogo = function(input) {
-  const file = input.files[0]; if (!file) return;
-  comprimirImagen(file, 300, 0.85).then(b64 => {
+window.previsualizarLogo = function (input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  comprimirImagen(file, 300, 0.85).then((b64) => {
     document.getElementById('preview-logo-admin').src = b64;
     const btn = document.getElementById('btn-guardar-logo');
-    btn.dataset.b64 = b64; btn.style.display = 'inline-block';
+    btn.dataset.b64 = b64;
+    btn.style.display = 'inline-block';
   });
 };
-window.guardarLogo = async function(btn) {
-  const b64 = btn.dataset.b64; if (!b64) return;
+
+window.guardarLogo = async function (btn) {
+  const b64 = btn.dataset.b64;
+  if (!b64) return;
+
   try {
     const ref = doc(db, 'config', 'site');
-    const snap = await getDoc(ref); const data = snap.exists() ? snap.data() : {};
+    const snap = await getDoc(ref);
+    const data = snap.exists() ? snap.data() : {};
     await setDoc(ref, { ...data, logo: b64 });
-    document.querySelectorAll('.site-logo').forEach(el => el.src = b64);
+    document.querySelectorAll('.site-logo').forEach((item) => {
+      item.src = b64;
+    });
+    clearAdminError('logo');
     showOk('ok-logo');
-  } catch (e) { console.warn('Logo save:', e); }
+  } catch (error) {
+    showAdminError('logo', formatError(error, 'No se pudo guardar el logo.'));
+  }
 };
 
-// ── GALERÍA ──
-window.seleccionarFoto = function(input) {
-  const file = input.files[0]; if (!file) return;
+window.seleccionarFoto = function (input) {
+  const file = input.files[0];
+  if (!file) return;
+
   const titulo = document.getElementById('foto-titulo').value.trim();
-  comprimirImagen(file, 600, 0.82).then(b64 => {
+  comprimirImagen(file, 600, 0.82).then((b64) => {
     pendingFoto = { b64, titulo };
     const prev = document.getElementById('foto-preview-pending');
-    if (prev) {
-      prev.innerHTML = `<div class="galeria-pending"><img src="${b64}" alt=""/><div><div style="color:#fff;font-size:.8rem">${titulo||'Sin título'}</div></div><button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">✕</button></div>`;
-      prev.style.display = 'block';
-    }
+    if (!prev) return;
+
+    prev.innerHTML = `
+      <div class="galeria-pending">
+        <img src="${b64}" alt=""/>
+        <div><div style="color:#fff;font-size:.8rem">${escapeHtml(titulo || 'Sin titulo')}</div></div>
+        <button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">x</button>
+      </div>
+    `;
+    prev.style.display = 'block';
     document.getElementById('btn-guardar-foto').style.display = 'inline-block';
   });
 };
-window.cancelarFoto = function() {
+
+window.cancelarFoto = function () {
   pendingFoto = null;
   const prev = document.getElementById('foto-preview-pending');
-  if (prev) { prev.innerHTML = ''; prev.style.display = 'none'; }
+  if (prev) {
+    prev.innerHTML = '';
+    prev.style.display = 'none';
+  }
   document.getElementById('btn-guardar-foto').style.display = 'none';
   document.getElementById('foto-titulo').value = '';
-  const inp = document.getElementById('foto-file-input'); if (inp) inp.value = '';
+  const input = document.getElementById('foto-file-input');
+  if (input) input.value = '';
 };
-window.guardarFoto = async function() {
-  if (!pendingFoto) return;
-  const btn = document.getElementById('btn-guardar-foto');
-  btn.textContent = '⏳ Subiendo...'; btn.disabled = true;
-  try {
-    await addDoc(collection(db, 'galeria'), { url: pendingFoto.b64, titulo: pendingFoto.titulo || '', orden: Date.now(), creado: serverTimestamp() });
-    cancelarFoto(); showOk('ok-galeria');
-  } catch (e) { alert('Error: ' + (e?.message || e)); }
-  btn.textContent = '💾 Guardar foto'; btn.disabled = false;
-};
-window.eliminarFoto = async function(id) {
-  if (!confirm('¿Eliminar esta foto?')) return;
-  await deleteDoc(doc(db, 'galeria', id));
-};
-export function renderGaleriaAdmin(fotos) {
-  const grid = document.getElementById('galeria-admin-grid'); if (!grid) return;
-  if (!fotos.length) { grid.innerHTML = '<p style="color:rgba(255,255,255,.3);font-size:.78rem">No hay fotos aún.</p>'; return; }
-  grid.innerHTML = fotos.map(f => `
-    <div class="galeria-admin-item">
-      <img src="${f.url}" alt="${f.titulo||''}" loading="lazy"/>
-      <button class="del-foto" onclick="eliminarFoto('${f.id}')">✕</button>
-      ${f.titulo ? `<div class="g-item-label">${f.titulo}</div>` : ''}
-    </div>`).join('');
-}
 
-// ══════════════════════════════════════════
-// PROMOCIONES — Firebase Real (window.__db)
-// ══════════════════════════════════════════
-window.cargarAdminPromociones = async function() {
-  const lista = document.getElementById('promo-lista'); if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+window.guardarFoto = async function () {
+  if (!pendingFoto) return;
+
+  const btn = document.getElementById('btn-guardar-foto');
+  btn.textContent = 'Subiendo...';
+  btn.disabled = true;
+
   try {
-    const promos = await getArr('promociones');
-    if (!promos.length) {
-      lista.innerHTML = '<div class="no-citas">No hay promociones. ¡Crea la primera con el botón de arriba ☝️!</div>';
-      return;
-    }
-    lista.innerHTML = [...promos].reverse().map(p => `
-      <div class="cita-item">
-        <div class="cita-item-header">
-          <div class="cita-name">🎁 ${p.titulo}</div>
-          <button class="btn-delete" onclick="eliminarPromocion('${p.id}')">✕ Eliminar</button>
-        </div>
-        <div class="cita-details">
-          <div>${p.descripcion || ''}</div>
-          <div>${p.descuento ? '🏷️ ' + p.descuento : ''}</div>
-          ${p.fechafin ? `<div>📅 Hasta: ${p.fechafin}</div>` : ''}
-        </div>
-      </div>`).join('');
-  } catch (e) {
-    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ Error: ${e?.message}</div>`;
+    await addDoc(collection(db, 'galeria'), {
+      url: pendingFoto.b64,
+      titulo: pendingFoto.titulo || '',
+      orden: Date.now(),
+      creado: serverTimestamp(),
+    });
+    clearAdminError('galeria');
+    cancelarFoto();
+    showOk('ok-galeria');
+  } catch (error) {
+    showAdminError('galeria', formatError(error, 'No se pudo guardar la foto.'));
+  } finally {
+    btn.textContent = 'Guardar foto';
+    btn.disabled = false;
   }
 };
 
-window.abrirFormPromo = function() {
-  ['promo-titulo','promo-desc','promo-descuento','promo-inicio','promo-fin'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  const ov = document.getElementById('overlay-nueva-promo');
-  if (ov) { ov.classList.add('show'); document.body.style.overflow = 'hidden'; }
+window.eliminarFoto = async function (id) {
+  if (!confirm('Eliminar esta foto?')) return;
+
+  try {
+    await deleteDoc(doc(db, 'galeria', id));
+    clearAdminError('galeria');
+  } catch (error) {
+    showAdminError('galeria', formatError(error, 'No se pudo eliminar la foto.'));
+  }
 };
 
-window.guardarPromocion = async function() {
-  const titulo = document.getElementById('promo-titulo')?.value.trim();
-  if (!titulo) { alert('El título es obligatorio.'); return; }
-  const btn = document.querySelector('#overlay-nueva-promo .btn-save');
-  if (btn) { btn.textContent = '⏳ Guardando...'; btn.disabled = true; }
-  try {
-    const lista = await getArr('promociones');
-    lista.push({
-      id: Date.now().toString(), titulo,
-      descripcion: document.getElementById('promo-desc')?.value.trim() || '',
-      descuento:   document.getElementById('promo-descuento')?.value.trim() || '',
-      fechainicio: document.getElementById('promo-inicio')?.value || '',
-      fechafin:    document.getElementById('promo-fin')?.value || '',
-      activa: true, creado: new Date().toISOString()
-    });
-    await saveArr('promociones', lista);
-    const ov = document.getElementById('overlay-nueva-promo');
-    if (ov) { ov.classList.remove('show'); document.body.style.overflow = ''; }
-    window.cargarAdminPromociones();
-    cargarPromosPublicas();
-    showOk('ok-promos');
-  } catch (e) { alert('❌ Error: ' + (e?.message || e)); }
-  if (btn) { btn.textContent = '💾 Guardar promoción'; btn.disabled = false; }
-};
+export function renderGaleriaAdmin(fotos) {
+  const grid = document.getElementById('galeria-admin-grid');
+  if (!grid) return;
 
-window.eliminarPromocion = async function(id) {
-  if (!confirm('¿Eliminar esta promoción?')) return;
-  try {
-    const lista = await getArr('promociones');
-    await saveArr('promociones', lista.filter(p => p.id !== id));
-    window.cargarAdminPromociones();
-    cargarPromosPublicas();
-  } catch (e) { alert('Error: ' + (e?.message || e)); }
-};
+  if (!fotos.length) {
+    grid.innerHTML = '<p style="color:rgba(255,255,255,.3);font-size:.78rem">No hay fotos aun.</p>';
+    return;
+  }
 
-// ══════════════════════════════════════════
-// RESEÑAS — Firebase Real (window.__db)
-// ══════════════════════════════════════════
-window.cargarAdminResenas = async function() {
-  const lista = document.getElementById('resenas-lista'); if (!lista) return;
-  lista.innerHTML = '<div class="no-citas"><span class="spin">⏳</span> Cargando...</div>';
+  grid.innerHTML = fotos
+    .map(
+      (foto) => `
+        <div class="galeria-admin-item">
+          <img src="${foto.url}" alt="${escapeHtml(foto.titulo || '')}" loading="lazy"/>
+          <button class="del-foto" onclick="eliminarFoto('${foto.id}')">x</button>
+          ${foto.titulo ? `<div class="g-item-label">${escapeHtml(foto.titulo)}</div>` : ''}
+        </div>
+      `,
+    )
+    .join('');
+}
+
+async function ensurePromosAdminListener() {
+  const state = realtimeState.promosAdmin;
+  if (state.unsubscribe || state.loading) return;
+
+  state.loading = true;
+  state.error = null;
+  renderAdminPromociones();
+
   try {
-    const resenas = await getArr('resenas');
-    if (!resenas.length) {
-      lista.innerHTML = '<div class="no-citas">No hay reseñas aún. Aparecerán aquí cuando alguien envíe una desde la página.</div>';
-      return;
-    }
-    const pendientes = resenas.filter(r => !r.aprobada).length;
-    lista.innerHTML = `
-      ${pendientes > 0 ? `<div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">
-        ⚠️ <strong>${pendientes} reseña${pendientes>1?'s':''} pendiente${pendientes>1?'s':''}</strong> — Apruébalas para que aparezcan en la web pública.
-      </div>` : ''}
-      ${[...resenas].reverse().map(r => `
-      <div class="cita-item">
-        <div class="cita-item-header">
-          <div class="cita-name">⭐ ${'★'.repeat(r.estrellas||5)} ${r.nombre}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn-export" style="${r.aprobada?'background:rgba(76,175,80,.2);color:#4CAF50':''}"
-              onclick="aprobarResena('${r.id}',${!r.aprobada})">${r.aprobada?'✅ Publicada':'⏳ Aprobar'}</button>
-            <button class="btn-delete" onclick="eliminarResena('${r.id}')">✕</button>
+    const { db: rdb, fb } = await realFB();
+    const ref = fb.collection(rdb, PROMOS_COLLECTION);
+    const q = fb.query(ref, fb.orderBy('creadoMs', 'desc'));
+
+    state.unsubscribe = fb.onSnapshot(
+      q,
+      (snapshot) => {
+        state.loading = false;
+        state.error = null;
+        state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
+        renderAdminPromociones();
+      },
+      (error) => {
+        state.loading = false;
+        state.unsubscribe = null;
+        state.error = formatError(error);
+        renderAdminPromociones();
+      },
+    );
+  } catch (error) {
+    state.loading = false;
+    state.error = formatError(error);
+    renderAdminPromociones();
+  }
+}
+
+async function ensurePromosPublicListener() {
+  const state = realtimeState.promosPublic;
+  if (state.unsubscribe || state.loading) return;
+
+  state.loading = true;
+  state.error = null;
+  renderPromosPublicGrid();
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    const ref = fb.collection(rdb, PROMOS_COLLECTION);
+    const q = fb.query(ref, fb.where('activa', '==', true));
+
+    state.unsubscribe = fb.onSnapshot(
+      q,
+      (snapshot) => {
+        state.loading = false;
+        state.error = null;
+        state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
+        renderPromosPublicGrid();
+      },
+      (error) => {
+        state.loading = false;
+        state.unsubscribe = null;
+        state.error = formatError(error);
+        renderPromosPublicGrid();
+      },
+    );
+  } catch (error) {
+    state.loading = false;
+    state.error = formatError(error);
+    renderPromosPublicGrid();
+  }
+}
+
+async function ensureResenasAdminListener() {
+  const state = realtimeState.resenasAdmin;
+  if (state.unsubscribe || state.loading) return;
+
+  state.loading = true;
+  state.error = null;
+  renderAdminResenas();
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    const ref = fb.collection(rdb, RESENAS_COLLECTION);
+    const q = fb.query(ref, fb.orderBy('creadoMs', 'desc'));
+
+    state.unsubscribe = fb.onSnapshot(
+      q,
+      (snapshot) => {
+        state.loading = false;
+        state.error = null;
+        state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
+        renderAdminResenas();
+      },
+      (error) => {
+        state.loading = false;
+        state.unsubscribe = null;
+        state.error = formatError(error);
+        renderAdminResenas();
+      },
+    );
+  } catch (error) {
+    state.loading = false;
+    state.error = formatError(error);
+    renderAdminResenas();
+  }
+}
+
+async function ensureResenasPublicListener() {
+  const state = realtimeState.resenasPublic;
+  if (state.unsubscribe || state.loading) return;
+
+  state.loading = true;
+  state.error = null;
+  renderResenasPublicGrid();
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    const ref = fb.collection(rdb, RESENAS_COLLECTION);
+    const q = fb.query(ref, fb.where('aprobada', '==', true));
+
+    state.unsubscribe = fb.onSnapshot(
+      q,
+      (snapshot) => {
+        state.loading = false;
+        state.error = null;
+        state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
+        renderResenasPublicGrid();
+      },
+      (error) => {
+        state.loading = false;
+        state.unsubscribe = null;
+        state.error = formatError(error);
+        renderResenasPublicGrid();
+      },
+    );
+  } catch (error) {
+    state.loading = false;
+    state.error = formatError(error);
+    renderResenasPublicGrid();
+  }
+}
+
+function renderAdminPromociones() {
+  const lista = document.getElementById('promo-lista');
+  if (!lista) return;
+
+  const state = realtimeState.promosAdmin;
+  if (state.loading) {
+    lista.innerHTML = '<div class="no-citas"><span class="spin">...</span> Cargando...</div>';
+    return;
+  }
+
+  if (state.error) {
+    lista.innerHTML = showStateMessage(state.error, true);
+    return;
+  }
+
+  if (!state.items.length) {
+    lista.innerHTML = showStateMessage('No hay promociones. Crea la primera desde el boton superior.');
+    return;
+  }
+
+  lista.innerHTML = state.items
+    .map(
+      (promo) => `
+        <div class="cita-item">
+          <div class="cita-item-header">
+            <div class="cita-name">Promocion: ${escapeHtml(promo.titulo || 'Sin titulo')}</div>
+            <button class="btn-delete" onclick="eliminarPromocion('${promo.id}')">x Eliminar</button>
+          </div>
+          <div class="cita-details">
+            <div>${escapeHtml(promo.descripcion || 'Sin descripcion')}</div>
+            <div>${promo.descuento ? `Precio: ${escapeHtml(promo.descuento)}` : 'Sin precio visible'}</div>
+            ${promo.fechafin ? `<div>Hasta: ${escapeHtml(promo.fechafin)}</div>` : '<div>Sin fecha de cierre</div>'}
           </div>
         </div>
-        <div class="cita-details">
-          <div>💅 ${r.servicio||'Sin especificar'}</div>
-          <div style="grid-column:span 2;font-style:italic">"${r.comentario||''}"</div>
+      `,
+    )
+    .join('');
+}
+
+function renderPromosPublicGrid() {
+  const grid = document.getElementById('promos-grid');
+  if (!grid) return;
+
+  const state = realtimeState.promosPublic;
+  if (state.loading) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  if (state.error) {
+    grid.innerHTML = publicErrorCard(`No se pudieron cargar las promociones: ${state.error}`, true);
+    return;
+  }
+
+  if (!state.items.length) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  const badges = ['Mas popular', 'Destacada', 'Especial'];
+  const colors = ['var(--rose)', 'var(--gold)', '#4CAF50'];
+
+  grid.innerHTML = state.items
+    .map(
+      (promo, index) => `
+        <div class="promo-card reveal visible">
+          <div class="promo-badge" style="background:${colors[index % colors.length]}">${badges[index % badges.length]}</div>
+          <div class="promo-title">${escapeHtml(promo.titulo || 'Promocion')}</div>
+          <div class="promo-desc">${escapeHtml(promo.descripcion || '')}</div>
+          <div class="promo-precio"><span class="promo-ahora">${escapeHtml(promo.descuento || '')}</span></div>
+          ${promo.fechafin ? `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${escapeHtml(promo.fechafin)}</div>` : ''}
+          <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">Quiero esta promocion</button>
         </div>
-      </div>`).join('')}`;
-  } catch (e) {
-    lista.innerHTML = `<div class="no-citas" style="color:#ff6b6b">❌ Error: ${e?.message}</div>`;
+      `,
+    )
+    .join('');
+}
+
+function renderAdminResenas() {
+  const lista = document.getElementById('resenas-lista');
+  if (!lista) return;
+
+  const state = realtimeState.resenasAdmin;
+  if (state.loading) {
+    lista.innerHTML = '<div class="no-citas"><span class="spin">...</span> Cargando...</div>';
+    return;
+  }
+
+  if (state.error) {
+    lista.innerHTML = showStateMessage(state.error, true);
+    return;
+  }
+
+  if (!state.items.length) {
+    lista.innerHTML = showStateMessage('No hay resenas aun. Apareceran aqui cuando alguien envie una desde la pagina.');
+    return;
+  }
+
+  const pendientes = state.items.filter((item) => !item.aprobada).length;
+  const warning = pendientes
+    ? `
+        <div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">
+          ${pendientes} resena${pendientes > 1 ? 's' : ''} pendiente${pendientes > 1 ? 's' : ''}. Apruebalas para que aparezcan en la web publica.
+        </div>
+      `
+    : '';
+
+  lista.innerHTML =
+    warning +
+    state.items
+      .map(
+        (resena) => `
+          <div class="cita-item">
+            <div class="cita-item-header">
+              <div class="cita-name">${'★'.repeat(resena.estrellas || 5)} ${escapeHtml(resena.nombre || 'Cliente')}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn-export" style="${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${resena.id}',${!resena.aprobada})">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
+                <button class="btn-delete" onclick="eliminarResena('${resena.id}')">x</button>
+              </div>
+            </div>
+            <div class="cita-details">
+              <div>Servicio: ${escapeHtml(resena.servicio || 'Sin especificar')}</div>
+              <div style="grid-column:span 2;font-style:italic">"${escapeHtml(resena.comentario || '')}"</div>
+            </div>
+          </div>
+        `,
+      )
+      .join('');
+}
+
+function renderResenasPublicGrid() {
+  const grid = document.getElementById('resenas-grid');
+  if (!grid) return;
+
+  const state = realtimeState.resenasPublic;
+  if (state.loading) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  if (state.error) {
+    grid.innerHTML = publicErrorCard(`No se pudieron cargar las resenas: ${state.error}`);
+    return;
+  }
+
+  if (!state.items.length) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  grid.innerHTML = state.items
+    .slice(0, 6)
+    .map(
+      (resena) => `
+        <div class="testimonio-card reveal visible">
+          <div class="test-stars">${'★'.repeat(resena.estrellas || 5)}${'☆'.repeat(5 - (resena.estrellas || 5))}</div>
+          <p class="test-text">"${escapeHtml(resena.comentario || '')}"</p>
+          <div class="test-autor">
+            <div class="test-avatar">${escapeHtml((resena.nombre || 'C').charAt(0).toUpperCase())}</div>
+            <div><strong>${escapeHtml(resena.nombre || 'Clienta')}</strong><span>${escapeHtml(resena.servicio || 'Clienta')}</span></div>
+          </div>
+        </div>
+      `,
+    )
+    .join('');
+}
+
+window.cargarAdminPromociones = async function () {
+  renderAdminPromociones();
+  await ensurePromosAdminListener();
+};
+
+window.abrirFormPromo = function () {
+  ['promo-titulo', 'promo-desc', 'promo-descuento', 'promo-fin'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  const overlay = document.getElementById('overlay-nueva-promo');
+  if (overlay) {
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
   }
 };
 
-window.aprobarResena = async function(id, estado) {
+window.guardarPromocion = async function () {
+  const titulo = document.getElementById('promo-titulo')?.value.trim();
+  if (!titulo) {
+    alert('El titulo es obligatorio.');
+    return;
+  }
+
+  const btn = document.querySelector('#overlay-nueva-promo .btn-save');
+  if (btn) {
+    btn.textContent = 'Guardando...';
+    btn.disabled = true;
+  }
+
   try {
-    const lista = await getArr('resenas');
-    const idx = lista.findIndex(r => r.id === id);
-    if (idx !== -1) { lista[idx].aprobada = estado; await saveArr('resenas', lista); }
-    window.cargarAdminResenas();
-    cargarResenasPublicas();
-  } catch (e) { alert('Error: ' + (e?.message || e)); }
+    const { db: rdb, fb } = await realFB();
+    await fb.addDoc(fb.collection(rdb, PROMOS_COLLECTION), {
+      titulo,
+      descripcion: document.getElementById('promo-desc')?.value.trim() || '',
+      descuento: document.getElementById('promo-descuento')?.value.trim() || '',
+      fechafin: document.getElementById('promo-fin')?.value || '',
+      activa: true,
+      creado: fb.serverTimestamp(),
+      creadoMs: Date.now(),
+    });
+
+    const overlay = document.getElementById('overlay-nueva-promo');
+    if (overlay) {
+      overlay.classList.remove('show');
+      document.body.style.overflow = '';
+    }
+
+    realtimeState.promosAdmin.error = null;
+    realtimeState.promosPublic.error = null;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showOk('ok-promos');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo guardar la promocion.');
+    realtimeState.promosAdmin.error = message;
+    realtimeState.promosPublic.error = message;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    alert(`Error al guardar la promocion: ${message}`);
+  } finally {
+    if (btn) {
+      btn.textContent = 'Guardar promocion';
+      btn.disabled = false;
+    }
+  }
 };
 
-window.eliminarResena = async function(id) {
-  if (!confirm('¿Eliminar esta reseña?')) return;
+window.eliminarPromocion = async function (id) {
+  if (!confirm('Eliminar esta promocion?')) return;
+
   try {
-    const lista = await getArr('resenas');
-    await saveArr('resenas', lista.filter(r => r.id !== id));
-    window.cargarAdminResenas();
-    cargarResenasPublicas();
-  } catch (e) { alert('Error: ' + (e?.message || e)); }
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, PROMOS_COLLECTION, id));
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la promocion.');
+    realtimeState.promosAdmin.error = message;
+    realtimeState.promosPublic.error = message;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    alert(message);
+  }
 };
 
-// ── Reseñas públicas (homepage) ──
+window.cargarAdminResenas = async function () {
+  renderAdminResenas();
+  await ensureResenasAdminListener();
+};
+
+window.aprobarResena = async function (id, estado) {
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.updateDoc(fb.doc(rdb, RESENAS_COLLECTION, id), {
+      aprobada: estado,
+      actualizadoMs: Date.now(),
+    });
+  } catch (error) {
+    const message = formatError(error, 'No se pudo actualizar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    alert(message);
+  }
+};
+
+window.eliminarResena = async function (id) {
+  if (!confirm('Eliminar esta resena?')) return;
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    alert(message);
+  }
+};
+
 export async function cargarResenasPublicas() {
-  try {
-    const lista = await getArr('resenas');
-    const aprobadas = lista.filter(r => r.aprobada);
-    const grid = document.getElementById('resenas-grid'); if (!grid) return;
-    if (!aprobadas.length) { grid.innerHTML = ''; return; }
-    grid.innerHTML = [...aprobadas].slice(-6).reverse().map(r => `
-      <div class="testimonio-card reveal">
-        <div class="test-stars">${'★'.repeat(r.estrellas||5)}${'☆'.repeat(5-(r.estrellas||5))}</div>
-        <p class="test-text">"${r.comentario}"</p>
-        <div class="test-autor">
-          <div class="test-avatar">${r.nombre?r.nombre[0].toUpperCase():'C'}</div>
-          <div><strong>${r.nombre}</strong><span>${r.servicio||'Clienta'}</span></div>
-        </div>
-      </div>`).join('');
-  } catch(e) { /* silently fail */ }
+  renderResenasPublicGrid();
+  await ensureResenasPublicListener();
 }
 
-// ── Promos públicas (homepage) ──
 export async function cargarPromosPublicas() {
-  try {
-    const promos = await getArr('promociones');
-    const activas = promos.filter(p => p.activa !== false);
-    const grid = document.getElementById('promos-grid'); if (!grid || !activas.length) return;
-    const badges = ['🔥 Más popular','⭐ Destacada','💚 Especial'];
-    const colors = ['var(--rose)','var(--gold)','#4CAF50'];
-    grid.innerHTML = [...activas].reverse().map((p, i) => `
-      <div class="promo-card reveal">
-        <div class="promo-badge" style="background:${colors[i%3]}">${badges[i%3]}</div>
-        <div class="promo-title">${p.titulo}</div>
-        <div class="promo-desc">${p.descripcion || ''}</div>
-        <div class="promo-precio"><span class="promo-ahora">${p.descuento || ''}</span></div>
-        ${p.fechafin ? `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin-bottom:10px">Hasta: ${p.fechafin}</div>` : ''}
-        <button class="promo-btn" onclick="abrirOverlay('overlay-cita')">¡Quiero esto!</button>
-      </div>`).join('');
-  } catch(e) { /* silently fail */ }
+  renderPromosPublicGrid();
+  await ensurePromosPublicListener();
 }
 
-// ── Enviar reseña pública ──
-window.enviarResena = async function(e) {
+window.enviarResena = async function (e) {
   e.preventDefault();
-  const nombre     = document.getElementById('res-nombre')?.value.trim();
-  const estrellas  = Number(document.getElementById('res-estrellas')?.value) || 5;
-  const servicio   = document.getElementById('res-servicio')?.value.trim() || '';
+
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = Number(document.getElementById('res-estrellas')?.value) || 5;
+  const servicio = document.getElementById('res-servicio')?.value.trim() || '';
   const comentario = document.getElementById('res-comentario')?.value.trim();
-  if (!nombre || !comentario) { alert('Nombre y comentario son obligatorios.'); return; }
-  const btn = document.getElementById('btn-resena');
-  btn.disabled = true; btn.textContent = '⏳ Enviando...';
-  try {
-    const lista = await getArr('resenas');
-    lista.push({ id: Date.now().toString(), nombre, estrellas, servicio, comentario, aprobada: false, creado: new Date().toISOString() });
-    await saveArr('resenas', lista);
-    document.getElementById('resena-form').reset();
-    const ok = document.getElementById('resena-ok');
-    if (ok) { ok.style.display = 'block'; setTimeout(() => ok.style.display = 'none', 5000); }
-  } catch (err) {
-    alert('❌ Error al enviar: ' + (err?.message || 'Intenta de nuevo.'));
+
+  if (!nombre || !comentario) {
+    alert('Nombre y comentario son obligatorios.');
+    return;
   }
-  btn.disabled = false; btn.textContent = '💅 Enviar reseña';
+
+  const btn = document.getElementById('btn-resena');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
+      nombre,
+      estrellas,
+      servicio,
+      comentario,
+      aprobada: false,
+      creado: fb.serverTimestamp(),
+      creadoMs: Date.now(),
+    });
+
+    realtimeState.resenasAdmin.error = null;
+    const form = document.getElementById('resena-form');
+    if (form) form.reset();
+    const ok = document.getElementById('resena-ok');
+    if (ok) {
+      ok.style.display = 'block';
+      setTimeout(() => {
+        ok.style.display = 'none';
+      }, 5000);
+    }
+  } catch (error) {
+    const message = formatError(error, 'No se pudo enviar la resena.');
+    realtimeState.resenasPublic.error = message;
+    renderResenasPublicGrid();
+    alert(`Error al enviar la resena: ${message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enviar resena';
+  }
 };

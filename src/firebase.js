@@ -2,6 +2,7 @@
 //  API CLIENT → Render backend
 // ══════════════════════════════════════════
 const API = 'https://dulce-rosa-api.onrender.com';
+const API_TIMEOUT_MS = 20000;
 
 export function serverTimestamp() { return new Date().toISOString(); }
 export function arrayUnion(...items) { return { _t: 'union', items }; }
@@ -17,25 +18,44 @@ export function doc(_db, ...parts) {
 // Ping cada 14 min para que Render no duerma
 setInterval(() => fetch(`${API}/`).catch(() => {}), 14 * 60 * 1000);
 
-async function api(method, url, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const r = await fetch(`${API}${url}`, opts);
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${r.status}`);
+function normalizeApiError(error) {
+  if (error?.name === 'AbortError') {
+    return new Error('Render no respondio a tiempo. Puede estar dormido por cold start.');
   }
-  return r.json();
+
+  if (error instanceof Error && error.name === 'TypeError') {
+    return new Error(`No se pudo conectar con Render. ${error.message}`);
+  }
+
+  if (error instanceof Error) return error;
+
+  return new Error('No se pudo conectar con Render.');
+}
+
+async function api(method, url, body, timeoutMs = API_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const opts = { method, headers: { 'Content-Type': 'application/json' }, signal: controller.signal };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+
+  try {
+    const r = await fetch(`${API}${url}`, opts);
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    return r.json();
+  } catch (error) {
+    throw normalizeApiError(error);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function getDoc(ref) {
-  try {
-    const data = await api('GET', `/${ref.path}`);
-    const isEmpty = !data || Object.keys(data).length === 0;
-    return { exists: () => !isEmpty, data: () => data, id: ref.path.split('/').pop() };
-  } catch {
-    return { exists: () => false, data: () => null, id: ref.path.split('/').pop() };
-  }
+  const data = await api('GET', `/${ref.path}`);
+  const isEmpty = !data || (typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 0);
+  return { exists: () => !isEmpty, data: () => data, id: ref.path.split('/').pop() };
 }
 
 export async function setDoc(ref, data) {
@@ -75,23 +95,35 @@ export async function updateDoc(ref, data) {
   }
 }
 
-export function onSnapshot(ref, callback) {
+export function onSnapshot(ref, callback, onError = () => {}) {
   let last = null;
+  let lastError = null;
+
   async function poll() {
     try {
       if (ref._ref === 'doc') {
         const snap = await getDoc(ref);
         const sig = JSON.stringify(snap.data());
         if (sig === last) return;
-        last = sig; callback(snap);
+        last = sig;
+        lastError = null;
+        callback(snap);
       } else {
         const snap = await getDocs(ref);
         const sig = JSON.stringify(snap.docs.map(d => d.data()));
         if (sig === last) return;
-        last = sig; callback(snap);
+        last = sig;
+        lastError = null;
+        callback(snap);
       }
-    } catch (e) { console.warn('poll:', e?.message); }
+    } catch (e) {
+      const message = e?.message || String(e);
+      if (message === lastError) return;
+      lastError = message;
+      onError(e);
+    }
   }
+
   poll();
   const id = setInterval(poll, 4000);
   return () => clearInterval(id);

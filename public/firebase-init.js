@@ -2,7 +2,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import {
   initializeFirestore, collection, doc, getDoc, setDoc, addDoc,
-  getDocs, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
+  getDocs, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp,
+  query, where, orderBy
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const app = initializeApp({
@@ -21,7 +22,8 @@ window.__db = initializeFirestore(app, {
 
 window.__fb = {
   collection, doc, getDoc, setDoc, addDoc,
-  getDocs, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
+  getDocs, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp,
+  query, where, orderBy
 };
 
 window.dispatchEvent(new CustomEvent('fb-ready'));
