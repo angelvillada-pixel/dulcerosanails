@@ -138,6 +138,30 @@ export function showOk(id) {
   setTimeout(() => el.classList.remove('show'), 2600);
 }
 
+function setBusyButton(button, busyLabel) {
+  if (!button) return () => {};
+
+  const idleLabel = button.dataset.idleLabel || button.textContent;
+  button.dataset.idleLabel = idleLabel;
+  button.textContent = busyLabel;
+  button.disabled = true;
+
+  return () => {
+    button.textContent = idleLabel;
+    button.disabled = false;
+  };
+}
+
+function syncHoraChipLabels() {
+  document.querySelectorAll('.hora-chip').forEach((chip) => {
+    const hourValue = chip.dataset.hora || chip.textContent.trim();
+    chip.textContent = to12h(hourValue);
+    chip.title = to12h(hourValue);
+  });
+}
+
+syncHoraChipLabels();
+
 window.switchTab = function (tab) {
   document.querySelectorAll('.tab-btn').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   document.querySelectorAll('.tab-pane').forEach((pane) => pane.classList.toggle('active', pane.id === `tab-${tab}`));
@@ -248,6 +272,7 @@ window.cargarAdminConfig = async function () {
   const el = document.getElementById('a-nequi');
   if (el) el.value = '324 568 3032';
   document.querySelectorAll('.hora-chip').forEach((chip) => chip.classList.add('activa'));
+  syncHoraChipLabels();
 
   try {
     const snap = await getDoc(doc(db, 'config', 'site'));
@@ -263,34 +288,27 @@ window.cargarAdminConfig = async function () {
 };
 
 window.guardarConfig = async function () {
-  const btn = document.querySelector('#tab-config .btn-save');
-  if (btn) {
-    btn.textContent = 'Guardando...';
-    btn.disabled = true;
-  }
+  const restoreButton = setBusyButton(document.querySelector('#tab-config .btn-save'), 'Guardando...');
 
   const nequi = document.getElementById('a-nequi').value.trim();
   const horarios = [...document.querySelectorAll('.hora-chip.activa')].map((chip) => chip.dataset.hora);
   const activas = horarios.length ? horarios : [...HORAS_DEFAULT];
-  window._horasDisponibles = activas;
-  document.querySelectorAll('.nequi-num').forEach((item) => {
-    item.textContent = nequi;
-  });
 
   try {
     const ref = doc(db, 'config', 'site');
     const snap = await getDoc(ref);
     const data = snap.exists() ? snap.data() : {};
     await setDoc(ref, { ...data, nequi, horarios: activas });
+    window._horasDisponibles = activas;
+    document.querySelectorAll('.nequi-num').forEach((item) => {
+      item.textContent = nequi;
+    });
     clearAdminError('config');
     showOk('ok-config');
   } catch (error) {
     showAdminError('config', formatError(error, 'No se pudo guardar la configuracion.'));
   } finally {
-    if (btn) {
-      btn.textContent = 'Guardar configuracion';
-      btn.disabled = false;
-    }
+    restoreButton();
   }
 };
 
@@ -318,6 +336,7 @@ window.cargarAdminPrecios = async function () {
 };
 
 window.guardarPrecios = async function () {
+  const restoreButton = setBusyButton(document.querySelector('#tab-precios .btn-save'), 'Guardando...');
   const precios = {};
   Object.keys(PRECIOS_DEFAULT).forEach((key) => {
     const input = document.getElementById(`ap-${key}`);
@@ -330,6 +349,8 @@ window.guardarPrecios = async function () {
     showOk('ok-precios');
   } catch (error) {
     showAdminError('precios', formatError(error, 'No se pudieron guardar los precios.'));
+  } finally {
+    restoreButton();
   }
 };
 
@@ -419,11 +440,7 @@ window.subirImagenServicio = function (id, input) {
 };
 
 window.guardarServicios = async function () {
-  const btn = document.querySelector('#tab-servicios .btn-save');
-  if (btn) {
-    btn.textContent = 'Guardando...';
-    btn.disabled = true;
-  }
+  const restoreButton = setBusyButton(document.querySelector('#tab-servicios .btn-save'), 'Guardando...');
 
   try {
     const snap = await getDoc(doc(db, 'config', 'servicios'));
@@ -457,10 +474,7 @@ window.guardarServicios = async function () {
   } catch (error) {
     showAdminError('servicios', formatError(error, 'No se pudieron guardar los servicios.'));
   } finally {
-    if (btn) {
-      btn.textContent = 'Guardar cambios';
-      btn.disabled = false;
-    }
+    restoreButton();
   }
 };
 
@@ -486,6 +500,8 @@ window.guardarNuevoServicio = async function () {
     alert('El nombre es obligatorio.');
     return;
   }
+
+  const restoreButton = setBusyButton(document.querySelector('#overlay-nuevo-svc .btn-save'), 'Guardando...');
 
   try {
     const id = `custom_${Date.now()}`;
@@ -524,8 +540,11 @@ window.guardarNuevoServicio = async function () {
 
     const cont = document.getElementById('svc-edit-list');
     if (cont) _renderSvcAdmin(cont, newData);
+    showOk('ok-servicios');
   } catch (error) {
     showAdminError('servicios', formatError(error, 'No se pudo crear el servicio.'));
+  } finally {
+    restoreButton();
   }
 };
 
@@ -568,6 +587,8 @@ window.guardarLogo = async function (btn) {
   const b64 = btn.dataset.b64;
   if (!b64) return;
 
+  const restoreButton = setBusyButton(btn, 'Guardando...');
+
   try {
     const ref = doc(db, 'config', 'site');
     const snap = await getDoc(ref);
@@ -576,10 +597,14 @@ window.guardarLogo = async function (btn) {
     document.querySelectorAll('.site-logo').forEach((item) => {
       item.src = b64;
     });
+    delete btn.dataset.b64;
+    btn.style.display = 'none';
     clearAdminError('logo');
     showOk('ok-logo');
   } catch (error) {
     showAdminError('logo', formatError(error, 'No se pudo guardar el logo.'));
+  } finally {
+    restoreButton();
   }
 };
 
@@ -621,9 +646,7 @@ window.cancelarFoto = function () {
 window.guardarFoto = async function () {
   if (!pendingFoto) return;
 
-  const btn = document.getElementById('btn-guardar-foto');
-  btn.textContent = 'Subiendo...';
-  btn.disabled = true;
+  const restoreButton = setBusyButton(document.getElementById('btn-guardar-foto'), 'Subiendo...');
 
   try {
     await addDoc(collection(db, 'galeria'), {
@@ -638,8 +661,7 @@ window.guardarFoto = async function () {
   } catch (error) {
     showAdminError('galeria', formatError(error, 'No se pudo guardar la foto.'));
   } finally {
-    btn.textContent = 'Guardar foto';
-    btn.disabled = false;
+    restoreButton();
   }
 };
 
@@ -1008,11 +1030,7 @@ window.guardarPromocion = async function () {
     return;
   }
 
-  const btn = document.querySelector('#overlay-nueva-promo .btn-save');
-  if (btn) {
-    btn.textContent = 'Guardando...';
-    btn.disabled = true;
-  }
+  const restoreButton = setBusyButton(document.querySelector('#overlay-nueva-promo .btn-save'), 'Guardando...');
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -1045,10 +1063,7 @@ window.guardarPromocion = async function () {
     renderPromosPublicGrid();
     alert(`Error al guardar la promocion: ${message}`);
   } finally {
-    if (btn) {
-      btn.textContent = 'Guardar promocion';
-      btn.disabled = false;
-    }
+    restoreButton();
   }
 };
 
@@ -1130,8 +1145,7 @@ window.enviarResena = async function (e) {
   }
 
   const btn = document.getElementById('btn-resena');
-  btn.disabled = true;
-  btn.textContent = 'Enviando...';
+  const restoreButton = setBusyButton(btn, 'Enviando...');
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -1161,7 +1175,6 @@ window.enviarResena = async function (e) {
     renderResenasPublicGrid();
     alert(`Error al enviar la resena: ${message}`);
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Enviar resena';
+    restoreButton();
   }
 };

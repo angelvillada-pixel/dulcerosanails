@@ -1,5 +1,5 @@
 import { LOGO } from './assets/logo.js';
-import { db, collection, doc, getDoc, setDoc, addDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
+import { db, collection, doc, getDoc, setDoc, addDoc, deleteDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from './firebase.js';
 import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen, to12h } from './data.js';
 import { renderGaleriaPublica } from './galeria.js';
 import { renderGaleriaAdmin, cargarPromosPublicas, cargarResenasPublicas } from './admin.js';
@@ -7,10 +7,12 @@ import { renderGaleriaAdmin, cargarPromosPublicas, cargarResenasPublicas } from 
 // ── GLOBAL FUNCTIONS — defined immediately so HTML onclicks work ──
 window.abrirOverlay = function(id) {
   const el = document.getElementById(id);
+  if (id === 'overlay-cita') normalizeCitaOverlayUi();
   if (el) { el.classList.add('show'); document.body.style.overflow = 'hidden'; }
 };
 window.cerrarOverlay = function(id) {
   const el = document.getElementById(id);
+  if (id === 'overlay-cita') normalizeCitaOverlayUi();
   if (el) { el.classList.remove('show'); document.body.style.overflow = ''; }
 };
 window.abrirLogin = function() {
@@ -23,6 +25,7 @@ window.abrirLogin = function() {
 window._horasDisponibles = [...HORAS_DEFAULT];
 let horaSeleccionada = null;
 let unsubSlots = null;
+let citaSubmitInFlight = false;
 
 document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
 setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=LOGO; },200);
@@ -64,6 +67,46 @@ function clearRuntimeIssue(key) {
 function formatRenderIssue(scope, error) {
   const detail = error?.message || String(error || 'Error desconocido.');
   return `${scope}: ${detail}`;
+}
+
+function setBusyButton(button, busyLabel) {
+  if (!button) return () => {};
+
+  const idleLabel = button.dataset.idleLabel || button.textContent;
+  button.dataset.idleLabel = idleLabel;
+  button.textContent = busyLabel;
+  button.disabled = true;
+
+  return () => {
+    button.textContent = idleLabel;
+    button.disabled = false;
+    button.style.background = '';
+  };
+}
+
+function resetSlotsPlaceholder() {
+  const grid = document.getElementById('slots-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="slots-ph">Selecciona primero una fecha.</div>';
+}
+
+function normalizeCitaOverlayUi() {
+  if (citaSubmitInFlight) return;
+
+  const btn = document.getElementById('btn-submit');
+  if (btn) {
+    const idleLabel = btn.dataset.idleLabel || btn.textContent;
+    btn.dataset.idleLabel = idleLabel;
+    btn.textContent = idleLabel;
+    btn.disabled = false;
+    btn.style.background = '';
+  }
+
+  const waBtn = document.getElementById('wa-confirm-btn');
+  if (waBtn) {
+    waBtn.style.display = 'none';
+    waBtn.href = '#';
+  }
 }
 
 // ── RENDER SERVICIOS ──
@@ -278,7 +321,7 @@ function renderSlots(booked) {
   horas.forEach(h => {
     const taken = booked.includes(h);
     const b = document.createElement('button');
-    b.type='button'; b.className='slot-btn'+(taken?' taken':''); b.textContent=h;
+    b.type='button'; b.className='slot-btn'+(taken?' taken':''); b.textContent=to12h(h);
     if (!taken) b.onclick = () => selSlot(h,b);
     grid.appendChild(b);
   });
@@ -297,7 +340,7 @@ function selSlot(h, el) {
 }
 
 // ── ENVIAR CITA ──
-window.enviarCita = async function(e) {
+window._enviarCitaLegacy = async function(e) {
   e.preventDefault();
   const hora = document.getElementById('inp-hora').value;
   if (!hora) { mostrarToast('Por favor selecciona un horario.',true); return; }
@@ -337,6 +380,116 @@ window.enviarCita = async function(e) {
     setRuntimeIssue('citas-form', formatRenderIssue('Citas', err));
     mostrarToast('❌ Error al enviar. Intenta de nuevo.',true);
     btn.textContent='✦ Solicitar cita ahora'; btn.disabled=false;
+  }
+};
+
+window.enviarCita = async function(e) {
+  e.preventDefault();
+
+  const hora = document.getElementById('inp-hora').value;
+  if (!hora) {
+    mostrarToast('Por favor selecciona un horario.', true);
+    return;
+  }
+
+  const fecha = document.getElementById('inp-fecha').value;
+  const nombre = document.getElementById('inp-nombre').value.trim();
+  const tel = document.getElementById('inp-tel').value.trim();
+  const servicio = document.getElementById('inp-servicio').value;
+  const nota = document.getElementById('inp-nota').value.trim();
+  const btn = document.getElementById('btn-submit');
+  const restoreButton = setBusyButton(btn, 'Enviando...');
+  const servicioNombre = (servicio.split(/\s[-\u2014]\s/)[0] || servicio).trim();
+  let shouldAutoRestore = true;
+  let citaCreada = null;
+  citaSubmitInFlight = true;
+
+  try {
+    const slotSnap = await getDoc(doc(db, 'slots', fecha));
+    if (slotSnap.exists() && (slotSnap.data().booked || []).includes(hora)) {
+      const waBtnBusy = document.getElementById('wa-confirm-btn');
+      if (waBtnBusy) waBtnBusy.style.display = 'none';
+      mostrarToast('Este horario acaba de ser tomado. Elige otro.', true);
+      window.cargarSlots();
+      return;
+    }
+
+    citaCreada = await addDoc(collection(db, 'citas'), {
+      nombre,
+      tel,
+      servicio,
+      fecha,
+      hora,
+      nota,
+      creado: serverTimestamp(),
+    });
+
+    try {
+      await updateDoc(doc(db, 'slots', fecha), { booked: arrayUnion(hora) });
+    } catch (slotError) {
+      if (citaCreada?.id) {
+        try {
+          await deleteDoc(doc(db, 'citas', citaCreada.id));
+        } catch (rollbackError) {
+          console.error('Rollback cita:', rollbackError);
+        }
+      }
+      throw slotError;
+    }
+
+    try {
+      await fetch('https://formsubmit.co/ajax/anacjimenez79@gmail.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          _subject: 'Nueva cita - Dulce Rosa',
+          Nombre: nombre,
+          Telefono: tel,
+          Servicio: servicio,
+          Fecha: fecha,
+          Hora: to12h(hora),
+          Nota: nota || 'Sin comentarios',
+          _template: 'table',
+        }),
+      });
+    } catch {}
+
+    clearRuntimeIssue('citas-form');
+    mostrarToast(`Tu cita es el ${fecha} a las ${to12h(hora)}. Te contactaremos para confirmar el abono.`, false);
+
+    const form = document.getElementById('citaForm');
+    if (form) form.reset();
+    horaSeleccionada = null;
+    document.getElementById('inp-hora').value = '';
+    if (unsubSlots) {
+      unsubSlots();
+      unsubSlots = null;
+    }
+    resetSlotsPlaceholder();
+
+    btn.textContent = 'Cita enviada';
+    btn.style.background = 'linear-gradient(135deg,#4CAF50,#66BB6A)';
+    shouldAutoRestore = false;
+    setTimeout(() => {
+      restoreButton();
+    }, 2600);
+
+    const waMsg = encodeURIComponent(
+      `Hola Dulce Rosa\nQuiero confirmar mi cita:\n- Servicio: ${servicioNombre}\n- Fecha: ${fecha}\n- Hora: ${to12h(hora)}\nNombre: ${nombre}\nTelefono: ${tel}`,
+    );
+    const waBtn = document.getElementById('wa-confirm-btn');
+    if (waBtn) {
+      waBtn.href = `https://wa.me/573245683032?text=${waMsg}`;
+      waBtn.style.display = 'flex';
+    }
+  } catch (err) {
+    console.error('Error cita:', err);
+    const message = err?.message || 'Error al enviar la cita.';
+    setRuntimeIssue('citas-form', formatRenderIssue('Citas', err));
+    mostrarToast(message, true);
+  } finally {
+    citaSubmitInFlight = false;
+    if (shouldAutoRestore) restoreButton();
   }
 };
 
