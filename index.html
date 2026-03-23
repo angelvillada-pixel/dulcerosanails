@@ -324,13 +324,13 @@
   <div class="modal" style="max-width:420px">
     <button class="modal-close" onclick="cerrarOverlay('overlay-login')">&times;</button>
     <div class="modal-title">🔐 Acceso Admin</div>
-    <div class="modal-sub">Exclusivo para Dulce Rosa Nails Spa</div>
-    <div class="a-field"><label class="a-label">Usuario</label>
-      <input class="a-input" id="auth-user" type="text" placeholder="Usuario"/></div>
+    <div class="modal-sub" id="auth-hint">Ingresa con el correo y la contrasena del admin creados en Firebase Auth.</div>
+    <div class="a-field"><label class="a-label">Correo admin</label>
+      <input class="a-input" id="auth-user" type="email" placeholder="admin@correo.com" autocomplete="username"/></div>
     <div class="a-field"><label class="a-label">Contraseña</label>
-      <input class="a-input" id="auth-pass" type="password" placeholder="Contraseña"/></div>
-    <div class="auth-error" id="auth-error">❌ Credenciales incorrectas.</div>
-    <button class="btn-save" onclick="verificarCredenciales()" style="margin-top:13px;width:100%">Ingresar</button>
+      <input class="a-input" id="auth-pass" type="password" placeholder="Contraseña" autocomplete="current-password"/></div>
+    <div class="auth-error" id="auth-error"></div>
+    <button class="btn-save" id="btn-auth-login" onclick="verificarCredenciales()" style="margin-top:13px;width:100%">Ingresar</button>
   </div>
 </div>
 
@@ -339,7 +339,10 @@
   <div class="modal">
     <button class="modal-close" onclick="cerrarOverlay('overlay-admin')">&times;</button>
     <div class="modal-title">⚙️ Panel Admin</div>
-    <div class="modal-sub">Dulce Rosa Nails Spa — Edición en tiempo real</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="modal-sub" id="admin-session-status">Inicia sesion con tu cuenta admin de Firebase.</div>
+      <button class="btn-export" id="btn-admin-logout" onclick="cerrarSesionAdmin()" style="display:none">Cerrar sesión</button>
+    </div>
     <div class="admin-tabs">
       <button class="tab-btn active" data-tab="citas" onclick="switchTab('citas')">📋 Citas</button>
       <button class="tab-btn" data-tab="precios" onclick="switchTab('precios');cargarAdminPrecios()">💰 Precios</button>

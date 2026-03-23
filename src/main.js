@@ -15,10 +15,21 @@ window.cerrarOverlay = function(id) {
   if (id === 'overlay-cita') normalizeCitaOverlayUi();
   if (el) { el.classList.remove('show'); document.body.style.overflow = ''; }
 };
-window.abrirLogin = function() {
+window.abrirLogin = async function() {
+  try {
+    const { auth } = await realAdminAuth();
+    if (auth.currentUser) {
+      openAdminPanel();
+      return;
+    }
+  } catch (error) {
+    console.error('Firebase Auth no disponible:', error);
+    setAuthError('No se pudo inicializar Firebase Auth.');
+  }
+
   document.getElementById('auth-user').value = '';
   document.getElementById('auth-pass').value = '';
-  document.getElementById('auth-error').classList.remove('show');
+  if (!document.getElementById('auth-error')?.classList.contains('show')) setAuthError('');
   window.abrirOverlay('overlay-login');
 };
 
@@ -26,6 +37,8 @@ window._horasDisponibles = [...HORAS_DEFAULT];
 let horaSeleccionada = null;
 let unsubSlots = null;
 let citaSubmitInFlight = false;
+let adminAuthWatcherSet = false;
+let adminSessionUser = null;
 
 document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
 setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=LOGO; },200);
@@ -106,6 +119,116 @@ function normalizeCitaOverlayUi() {
   if (waBtn) {
     waBtn.style.display = 'none';
     waBtn.href = '#';
+  }
+}
+
+async function realAdminAuth() {
+  if (window.__auth && window.__authApi) {
+    await (window.__authReadyPromise || Promise.resolve());
+    return { auth: window.__auth, authApi: window.__authApi };
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error('Firebase Auth no esta disponible.')), 7000);
+
+    window.addEventListener(
+      'fb-ready',
+      async () => {
+        clearTimeout(timeoutId);
+        try {
+          await (window.__authReadyPromise || Promise.resolve());
+          if (window.__auth && window.__authApi) {
+            resolve({ auth: window.__auth, authApi: window.__authApi });
+            return;
+          }
+          reject(new Error('Firebase Auth no se inicializo correctamente.'));
+        } catch (error) {
+          reject(error);
+        }
+      },
+      { once: true },
+    );
+  });
+}
+
+function setAuthError(message = '') {
+  const errorBox = document.getElementById('auth-error');
+  if (!errorBox) return;
+
+  if (!message) {
+    errorBox.textContent = '';
+    errorBox.classList.remove('show');
+    return;
+  }
+
+  errorBox.textContent = message;
+  errorBox.classList.add('show');
+}
+
+function mapAuthError(error) {
+  const code = error?.code || '';
+
+  if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+    return 'Correo o contrasena incorrectos.';
+  }
+
+  if (code === 'auth/invalid-email') {
+    return 'Escribe un correo valido.';
+  }
+
+  if (code === 'auth/too-many-requests') {
+    return 'Demasiados intentos fallidos. Espera unos minutos e intentalo de nuevo.';
+  }
+
+  if (code === 'auth/network-request-failed') {
+    return 'No se pudo conectar con Firebase Auth. Revisa tu conexion.';
+  }
+
+  return error?.message || 'No se pudo iniciar sesion.';
+}
+
+function updateAdminSessionUi(user) {
+  const toggle = document.getElementById('admin-toggle');
+  if (toggle) toggle.textContent = user ? '🔓 Admin' : '🔐 Admin';
+
+  const status = document.getElementById('admin-session-status');
+  if (status) status.textContent = user ? `Sesion activa: ${user.email || 'Admin autenticado'}` : 'Inicia sesion con tu cuenta admin de Firebase.';
+
+  const logoutBtn = document.getElementById('btn-admin-logout');
+  if (logoutBtn) logoutBtn.style.display = user ? 'inline-flex' : 'none';
+
+  const hint = document.getElementById('auth-hint');
+  if (hint) hint.textContent = user ? `Sesion detectada: ${user.email || 'Admin autenticado'}` : 'Ingresa con el correo y la contrasena del admin creados en Firebase Auth.';
+}
+
+function openAdminPanel() {
+  cerrarOverlay('overlay-login');
+  adminSessionUser = adminSessionUser || window.__auth?.currentUser || null;
+  abrirOverlay('overlay-admin');
+  updateAdminSessionUi(adminSessionUser);
+  window.switchTab('citas');
+  window.renderCitas().catch(console.error);
+  window.cargarAdminConfig().catch(console.error);
+  window.cargarAdminPrecios().catch(console.error);
+}
+
+async function initAdminAuthWatcher() {
+  if (adminAuthWatcherSet) return;
+  adminAuthWatcherSet = true;
+
+  try {
+    const { auth, authApi } = await realAdminAuth();
+    authApi.onAuthStateChanged(auth, (user) => {
+      adminSessionUser = user || null;
+      window.__adminUser = adminSessionUser;
+      updateAdminSessionUi(adminSessionUser);
+      if (!adminSessionUser && document.getElementById('overlay-admin')?.classList.contains('show')) {
+        cerrarOverlay('overlay-admin');
+      }
+    });
+  } catch (error) {
+    console.error('No se pudo inicializar Firebase Auth:', error);
+    setAuthError('No se pudo inicializar el acceso admin. Revisa Firebase Auth.');
   }
 }
 
@@ -500,17 +623,40 @@ function mostrarToast(msg,esError) {
 }
 
 // ── AUTH ADMIN ──
-const AU='DulceRosa28', AP='luciana28';
-// abrirLogin defined above
-window.verificarCredenciales=function(){
-  if(document.getElementById('auth-user').value===AU && document.getElementById('auth-pass').value===AP){
-    cerrarOverlay('overlay-login');
-    abrirOverlay('overlay-admin');
-    window.switchTab('citas');
-    window.renderCitas().catch(console.error);
-    window.cargarAdminConfig().catch(console.error);
-    window.cargarAdminPrecios().catch(console.error);
-  } else { document.getElementById('auth-error').classList.add('show'); }
+window.verificarCredenciales = async function() {
+  const email = document.getElementById('auth-user').value.trim();
+  const password = document.getElementById('auth-pass').value;
+  const restoreButton = setBusyButton(document.getElementById('btn-auth-login'), 'Ingresando...');
+
+  if (!email || !password) {
+    setAuthError('Ingresa tu correo admin y la contrasena.');
+    restoreButton();
+    return;
+  }
+
+  try {
+    const { auth, authApi } = await realAdminAuth();
+    setAuthError('');
+    await authApi.signInWithEmailAndPassword(auth, email, password);
+    adminSessionUser = auth.currentUser || adminSessionUser;
+    document.getElementById('auth-pass').value = '';
+    openAdminPanel();
+  } catch (error) {
+    setAuthError(mapAuthError(error));
+  } finally {
+    restoreButton();
+  }
+};
+
+window.cerrarSesionAdmin = async function() {
+  try {
+    const { auth, authApi } = await realAdminAuth();
+    await authApi.signOut(auth);
+    cerrarOverlay('overlay-admin');
+    setAuthError('');
+  } catch (error) {
+    alert(mapAuthError(error));
+  }
 };
 
 // ── REVEAL ANIMATIONS ──
@@ -530,6 +676,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const fi=document.getElementById('inp-fecha');
   if(fi) fi.min=fechaHoyColombia();
   window.addEventListener('scroll',()=>document.getElementById('navbar').classList.toggle('scrolled',scrollY>40));
+  document.getElementById('auth-user')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.verificarCredenciales();});
   document.getElementById('auth-pass')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.verificarCredenciales();});
   document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)cerrarOverlay(o.id);}));
   document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.overlay.show').forEach(o=>cerrarOverlay(o.id));});
@@ -539,6 +686,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   initReveal();
   actualizarSelectServicios();
+  initAdminAuthWatcher().catch(console.error);
   // Cargar promos y reseñas desde Firebase (instantáneo, sin Render)
   cargarPromosPublicas();
   cargarResenasPublicas();
