@@ -27,6 +27,8 @@ window._svcImages = {};
 
 const PROMOS_COLLECTION = 'promociones';
 const RESENAS_COLLECTION = 'resenas';
+const LOCAL_PENDING_REVIEWS_KEY = 'dulce-rosa:pending-reviews';
+const PRIMARY_FIRESTORE_ADMIN_EMAIL = 'dulcerosa794@gmail.com';
 
 const realtimeState = {
   citas: { items: [], loading: false, error: null, unsubscribe: null, initialized: false, limit: 20, filter: 'all' },
@@ -195,6 +197,79 @@ function sortByCreatedDesc(items) {
 
 function normalizeDoc(snapshot) {
   return { id: snapshot.id, ...snapshot.data() };
+}
+
+function sanitizePendingReview(item = {}) {
+  return {
+    id: String(item.id || ''),
+    nombre: String(item.nombre || '').trim().slice(0, 80),
+    estrellas: Math.max(1, Math.min(5, Number(item.estrellas) || 5)),
+    servicio: String(item.servicio || '').trim().slice(0, 120),
+    comentario: String(item.comentario || '').trim().slice(0, 1000),
+    aprobada: false,
+    creado: item.creado || new Date().toISOString(),
+    creadoMs: Number(item.creadoMs) || Date.now(),
+    _localPending: true,
+  };
+}
+
+function readPendingReviews() {
+  try {
+    const raw = localStorage.getItem(LOCAL_PENDING_REVIEWS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(sanitizePendingReview).filter((item) => item.id) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingReviews(items) {
+  try {
+    if (!items.length) {
+      localStorage.removeItem(LOCAL_PENDING_REVIEWS_KEY);
+      return;
+    }
+    localStorage.setItem(LOCAL_PENDING_REVIEWS_KEY, JSON.stringify(items.map(sanitizePendingReview).slice(0, 20)));
+  } catch {}
+}
+
+function getPendingReviews() {
+  return sortByCreatedDesc(readPendingReviews());
+}
+
+function upsertPendingReview(item) {
+  const next = getPendingReviews().filter((existing) => existing.id !== item.id);
+  next.push(sanitizePendingReview(item));
+  writePendingReviews(next);
+}
+
+function removePendingReview(id) {
+  if (!id) return;
+  const next = getPendingReviews().filter((item) => item.id !== String(id));
+  writePendingReviews(next);
+}
+
+function reconcilePendingReviews(items = []) {
+  if (!items.length) return;
+  const seenIds = new Set(items.map((item) => String(item.id || '')));
+  const next = getPendingReviews().filter((item) => !seenIds.has(item.id));
+  writePendingReviews(next);
+}
+
+function currentAdminEmail() {
+  return String(window.__adminUser?.email || window.__auth?.currentUser?.email || '').trim().toLowerCase();
+}
+
+function adminEmailWarningHtml() {
+  const email = currentAdminEmail();
+  if (!email || email === PRIMARY_FIRESTORE_ADMIN_EMAIL) return '';
+
+  return `
+    <div style="background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.32);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.78rem;color:#ffb2b2">
+      Sesion actual: ${escapeHtml(email)}. Las reglas de Firestore para reseñas solo permiten lectura admin al correo
+      ${escapeHtml(PRIMARY_FIRESTORE_ADMIN_EMAIL)}. Si entras con otro correo, una reseña puede enviarse pero no aparecer en esta lista.
+    </div>
+  `;
 }
 
 function showStateMessage(message, isError = false) {
@@ -1216,13 +1291,14 @@ async function ensureResenasAdminListener() {
 
     state.unsubscribe = fb.onSnapshot(
       q,
-      (snapshot) => {
-        clearTimeout(watchdog);
-        state.loading = false;
-        state.error = null;
-        state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
-        renderAdminResenas();
-      },
+        (snapshot) => {
+          clearTimeout(watchdog);
+          state.loading = false;
+          state.error = null;
+          state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
+          reconcilePendingReviews(state.items);
+          renderAdminResenas();
+        },
       (error) => {
         clearTimeout(watchdog);
         state.loading = false;
@@ -1261,13 +1337,14 @@ async function ensureResenasPublicListener() {
 
     state.unsubscribe = fb.onSnapshot(
       q,
-      (snapshot) => {
-        clearTimeout(watchdog);
-        state.loading = false;
-        state.error = null;
-        state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
-        renderResenasPublicGrid();
-      },
+        (snapshot) => {
+          clearTimeout(watchdog);
+          state.loading = false;
+          state.error = null;
+          state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
+          reconcilePendingReviews(state.items);
+          renderResenasPublicGrid();
+        },
       (error) => {
         clearTimeout(watchdog);
         state.loading = false;
@@ -1381,22 +1458,25 @@ function renderAdminResenas() {
   if (!lista) return;
 
   const state = realtimeState.resenasAdmin;
+  const pendingLocal = getPendingReviews().filter((item) => !state.items.some((existing) => existing.id === item.id));
+  const visibleItems = sortByCreatedDesc([...pendingLocal, ...state.items]);
+
   if (state.loading) {
     lista.innerHTML = '<div class="no-citas"><span class="spin">...</span> Cargando...</div>';
     return;
   }
 
   if (state.error) {
-    lista.innerHTML = showStateMessage(state.error, true);
+    lista.innerHTML = adminEmailWarningHtml() + showStateMessage(state.error, true);
     return;
   }
 
-  if (!state.items.length) {
-    lista.innerHTML = showStateMessage('No hay resenas aun. Apareceran aqui cuando alguien envie una desde la pagina.');
+  if (!visibleItems.length) {
+    lista.innerHTML = adminEmailWarningHtml() + showStateMessage('No hay resenas aun. Apareceran aqui cuando alguien envie una desde la pagina.');
     return;
   }
 
-  const pendientes = state.items.filter((item) => !item.aprobada).length;
+  const pendientes = visibleItems.filter((item) => !item.aprobada).length;
   const warning = pendientes
     ? `
         <div style="background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#ffc107">
@@ -1406,21 +1486,31 @@ function renderAdminResenas() {
     : '';
 
   lista.innerHTML =
+    adminEmailWarningHtml() +
     warning +
-    state.items
+    visibleItems
       .map(
         (resena) => `
           <div class="cita-item">
             <div class="cita-item-header">
               <div class="cita-name">${'★'.repeat(resena.estrellas || 5)} ${escapeHtml(resena.nombre || 'Cliente')}</div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button class="btn-export" style="${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${resena.id}',${!resena.aprobada})">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
-                <button class="btn-delete" onclick="eliminarResena('${resena.id}')">x</button>
+                ${
+                  resena._localPending
+                    ? '<span class="cita-badge" style="background:rgba(201,162,106,.16);border-color:rgba(201,162,106,.35);color:#f3d8b4">Pendiente en este dispositivo</span>'
+                    : `<button class="btn-export" style="${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${resena.id}',${!resena.aprobada})">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
+                       <button class="btn-delete" onclick="eliminarResena('${resena.id}')">x</button>`
+                }
               </div>
             </div>
             <div class="cita-details">
               <div>Servicio: ${escapeHtml(resena.servicio || 'Sin especificar')}</div>
               <div style="grid-column:span 2;font-style:italic">"${escapeHtml(resena.comentario || '')}"</div>
+              ${
+                resena._localPending
+                  ? '<div style="grid-column:span 2;color:rgba(255,255,255,.58);font-size:.76rem">Se envio desde este navegador y esta pendiente de verse tambien en la lectura admin de Firestore.</div>'
+                  : ''
+              }
             </div>
           </div>
         `,
@@ -1434,6 +1524,12 @@ renderResenasPublicGrid = function () {
 
   const state = realtimeState.resenasPublic;
   const marketing = typeof currentMarketingState === 'function' ? currentMarketingState() : {};
+  const pendingLocal = getPendingReviews().filter((item) => !state.items.some((existing) => existing.id === item.id));
+  const visibleItems = sortByCreatedDesc([
+    ...pendingLocal.map((item) => ({ ...item, _pendingPublic: true })),
+    ...state.items,
+  ]);
+
   if (state.loading) {
     grid.innerHTML = '';
     return;
@@ -1450,7 +1546,7 @@ renderResenasPublicGrid = function () {
     return;
   }
 
-  if (!state.items.length) {
+  if (!visibleItems.length) {
     window.dispatchEvent(new CustomEvent('dr-reviews-stats', { detail: { count: 200, rating: 4.9 } }));
     grid.innerHTML = `
       <div class="empty-state-card light">
@@ -1462,19 +1558,19 @@ renderResenasPublicGrid = function () {
   }
 
   const total = state.items.length;
-  const average = state.items.reduce((sum, item) => sum + Number(item.estrellas || 5), 0) / total;
-  window.dispatchEvent(new CustomEvent('dr-reviews-stats', { detail: { count: total, rating: average } }));
+  const average = total ? state.items.reduce((sum, item) => sum + Number(item.estrellas || 5), 0) / total : 4.9;
+  window.dispatchEvent(new CustomEvent('dr-reviews-stats', { detail: { count: total || 200, rating: average } }));
 
-  grid.innerHTML = state.items
+  grid.innerHTML = visibleItems
     .slice(0, 6)
     .map(
       (resena) => `
-        <div class="testimonio-card reveal visible">
+        <div class="testimonio-card reveal visible" style="${resena._pendingPublic ? 'border-style:dashed;background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(255,249,244,.92));' : ''}">
           <div class="test-stars">${'★'.repeat(resena.estrellas || 5)}${'☆'.repeat(5 - (resena.estrellas || 5))}</div>
           <p class="test-text">"${escapeHtml(resena.comentario || '')}"</p>
           <div class="test-autor">
             <div class="test-avatar">${escapeHtml((resena.nombre || 'C').charAt(0).toUpperCase())}</div>
-            <div><strong>${escapeHtml(resena.nombre || 'Clienta')}</strong><span>${escapeHtml(resena.servicio || 'Clienta')}</span></div>
+            <div><strong>${escapeHtml(resena.nombre || 'Clienta')}</strong><span>${escapeHtml(resena._pendingPublic ? 'Pendiente de aprobacion' : resena.servicio || 'Clienta')}</span></div>
           </div>
         </div>
       `,
@@ -1673,10 +1769,12 @@ window.__enviarResenaCanon = async function (e) {
   const ok = document.getElementById('resena-ok');
   const restoreButton = setBusyButton(btn, 'Enviando...');
   if (ok) ok.style.display = 'none';
+  let localReviewId = '';
 
   try {
     const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase', 8000);
     const docRef = fb.doc(fb.collection(rdb, RESENAS_COLLECTION));
+    localReviewId = String(docRef.id || '');
     const payload = {
       nombre,
       estrellas,
@@ -1697,14 +1795,20 @@ window.__enviarResenaCanon = async function (e) {
 
     if (sendState === 'queued') {
       void writePromise.catch((error) => {
+        removePendingReview(localReviewId);
         const message = formatError(error, 'No se pudo confirmar la resena.');
         realtimeState.resenasPublic.error = message;
+        renderAdminResenas();
+        renderResenasPublicGrid();
         showAdminToast(message, 'error');
       });
     }
 
+    upsertPendingReview({ id: localReviewId, ...payload });
     realtimeState.resenasAdmin.error = null;
     realtimeState.resenasPublic.error = null;
+    renderAdminResenas();
+    renderResenasPublicGrid();
     document.getElementById('resena-form')?.reset();
 
     if (ok) {
@@ -1715,15 +1819,17 @@ window.__enviarResenaCanon = async function (e) {
       }, 5000);
     }
 
-    showAdminToast('Resena enviada. Sera aprobada pronto.', 'success');
-  } catch (error) {
-    const message = formatError(error, 'No se pudo enviar la resena.');
-    realtimeState.resenasPublic.error = message;
-    renderResenasPublicGrid();
-    showAdminToast(message, 'error');
-  } finally {
-    restoreButton();
-  }
+      showAdminToast('Resena enviada. Sera aprobada pronto.', 'success');
+    } catch (error) {
+      removePendingReview(localReviewId);
+      const message = formatError(error, 'No se pudo enviar la resena.');
+      realtimeState.resenasPublic.error = message;
+      renderAdminResenas();
+      renderResenasPublicGrid();
+      showAdminToast(message, 'error');
+    } finally {
+      restoreButton();
+    }
 };
 
 window.enviarResena = window.__enviarResenaCanon;
