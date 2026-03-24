@@ -751,6 +751,7 @@ function openAdminPanel() {
   adminSessionUser = adminSessionUser || window.__auth?.currentUser || null;
   abrirOverlay('overlay-admin');
   updateAdminSessionUi(adminSessionUser);
+  window.ensureLegacyMirrorCurrentState?.({ silent: true }).catch(() => {});
   window.switchTab('citas');
   window.renderCitas().catch(console.error);
   window.cargarAdminConfig().catch(console.error);

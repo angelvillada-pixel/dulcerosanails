@@ -15,6 +15,9 @@ import {
 import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, to12h, validarArchivoImagen } from './data.js';
 import { deleteAdminMedia, mediaKey, mediaUrl, uploadAdminMedia } from './media.js';
 
+const LEGACY_API = 'https://dulce-rosa-api.onrender.com';
+const LEGACY_TIMEOUT_MS = 15000;
+
 let pendingFoto = null;
 let pendingLogoMedia = null;
 let galeriaEnMemoria = [];
@@ -33,6 +36,7 @@ const realtimeState = {
 };
 
 let realFBPromise = null;
+let legacyMirrorPromise = null;
 
 function realFB() {
   if (realFBPromise) return realFBPromise;
@@ -65,6 +69,88 @@ function realFB() {
 
   return realFBPromise;
 }
+
+async function legacyRequest(method, path, body) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LEGACY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${LEGACY_API}${path}`, {
+      method,
+      signal: controller.signal,
+      headers: body === undefined ? { Accept: 'application/json' } : { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `HTTP ${response.status}`);
+    }
+    return payload;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Render no respondio a tiempo al sincronizar el fallback.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function syncLegacyConfig(key, value) {
+  return legacyRequest('POST', `/config/${key}`, value);
+}
+
+async function syncLegacyGalleryCreate(item) {
+  return legacyRequest('POST', '/galeria', item);
+}
+
+async function syncLegacyGalleryDelete(legacyId) {
+  if (!legacyId) return { ok: true };
+  return legacyRequest('DELETE', `/galeria/${legacyId}`);
+}
+
+window.ensureLegacyMirrorCurrentState = async function ({ silent = true } = {}) {
+  if (legacyMirrorPromise) return legacyMirrorPromise;
+
+  legacyMirrorPromise = (async () => {
+    const configKeys = ['site', 'precios', 'servicios', 'marketing'];
+
+    for (const key of configKeys) {
+      const snap = await getDoc(doc(db, 'config', key));
+      if (snap.exists()) {
+        await syncLegacyConfig(key, snap.data()).catch(() => {});
+      }
+    }
+
+    const gallerySnap = await getDocs(collection(db, 'galeria'));
+    for (const snap of gallerySnap.docs || []) {
+      const item = { id: snap.id, ...snap.data() };
+      if (!item?.url || item.legacyId) continue;
+      const legacyItem = await syncLegacyGalleryCreate({
+        url: item.url,
+        titulo: item.titulo || '',
+        orden: item.orden || Date.now(),
+        creado: item.creado || new Date().toISOString(),
+      }).catch(() => null);
+
+      if (legacyItem?.id) {
+        await updateDoc(doc(db, 'galeria', item.id), { legacyId: legacyItem.id }).catch(() => {});
+      }
+    }
+  })()
+    .catch((error) => {
+      if (!silent) {
+        showAdminToast(formatError(error, 'No se pudo sincronizar el fallback legacy.'), 'error');
+      }
+      throw error;
+    })
+    .finally(() => {
+      legacyMirrorPromise = null;
+    });
+
+  return legacyMirrorPromise;
+};
 
 function formatError(error, fallback = 'Error desconocido.') {
   const message = error?.message || String(error || fallback);
@@ -440,7 +526,9 @@ window.guardarConfig = async function () {
     const ref = doc(db, 'config', 'site');
     const snap = await getDoc(ref);
     const data = snap.exists() ? snap.data() : {};
-    await setDoc(ref, { ...data, nequi, horarios: activas });
+    const payload = { ...data, nequi, horarios: activas };
+    await setDoc(ref, payload);
+    await syncLegacyConfig('site', payload).catch(() => {});
     window._horasDisponibles = activas;
     document.querySelectorAll('.nequi-num').forEach((item) => {
       item.textContent = nequi;
@@ -487,6 +575,7 @@ window.guardarPrecios = async function () {
 
   try {
     await setDoc(doc(db, 'config', 'precios'), precios);
+    await syncLegacyConfig('precios', precios).catch(() => {});
     clearAdminError('precios');
     showOk('ok-precios');
   } catch (error) {
@@ -592,7 +681,7 @@ window.subirImagenServicio = async function (id, input) {
       const b64 = await comprimirImagen(file, 1200, 0.82);
       window._svcImages[id] = b64;
       if (prev) prev.innerHTML = `<img src="${b64}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;object-position:50% 32%"/>`;
-      showAdminToast('No habia storage remoto listo. Se usara el modo compatible actual.', 'info');
+      showAdminToast(`${formatError(uploadError, 'No se pudo usar el storage remoto.')} Se usara el modo compatible actual.`, 'info');
     } catch (error) {
       showAdminToast(formatError(error, 'No se pudo procesar la imagen del servicio.'), 'error');
       input.value = '';
@@ -639,6 +728,7 @@ window.guardarServicios = async function () {
     });
 
     await setDoc(doc(db, 'config', 'servicios'), servicios);
+    await syncLegacyConfig('servicios', servicios).catch(() => {});
     await Promise.allSettled(removedMedia.map((item) => deleteAdminMedia(item)));
     serviciosEnMemoria = servicios;
     window._svcImages = {};
@@ -702,6 +792,7 @@ window.guardarNuevoServicio = async function () {
     };
 
     await setDoc(doc(db, 'config', 'servicios'), newData);
+    await syncLegacyConfig('servicios', newData).catch(() => {});
     serviciosEnMemoria = newData;
     clearAdminError('servicios');
 
@@ -734,6 +825,7 @@ window.eliminarServicio = async function (id, isBuiltin) {
     else delete newData[id];
 
     await setDoc(doc(db, 'config', 'servicios'), newData);
+    await syncLegacyConfig('servicios', newData).catch(() => {});
     serviciosEnMemoria = newData;
     clearAdminError('servicios');
 
@@ -768,7 +860,7 @@ window.previsualizarLogo = async function (input) {
       if (preview) preview.src = mediaUrl(pendingLogoMedia) || pendingLogoMedia;
       const btn = document.getElementById('btn-guardar-logo');
       btn.style.display = 'inline-block';
-      showAdminToast('No habia storage remoto listo. Se usara el modo compatible actual.', 'info');
+      showAdminToast(`${formatError(uploadError, 'No se pudo usar el storage remoto.')} Se usara el modo compatible actual.`, 'info');
     } catch (error) {
       showAdminToast(formatError(error, 'No se pudo procesar el logo.'), 'error');
       input.value = '';
@@ -788,7 +880,9 @@ window.guardarLogo = async function (btn) {
     const snap = await getDoc(ref);
     const data = snap.exists() ? snap.data() : {};
     const previousLogo = data.logo || null;
-    await setDoc(ref, { ...data, logo: pendingLogoMedia });
+    const payload = { ...data, logo: pendingLogoMedia };
+    await setDoc(ref, payload);
+    await syncLegacyConfig('site', payload).catch(() => {});
     document.querySelectorAll('.site-logo').forEach((item) => {
       item.src = mediaUrl(pendingLogoMedia) || pendingLogoMedia;
     });
@@ -844,7 +938,7 @@ window.seleccionarFoto = async function (input) {
         prev.querySelector('img').src = b64;
       }
       document.getElementById('btn-guardar-foto').style.display = 'inline-block';
-      showAdminToast('No habia storage remoto listo. Se usara el modo compatible actual.', 'info');
+      showAdminToast(`${formatError(uploadError, 'No se pudo usar el storage remoto.')} Se usara el modo compatible actual.`, 'info');
     } catch (error) {
       showAdminToast(formatError(error, 'No se pudo procesar la foto.'), 'error');
       input.value = '';
@@ -873,12 +967,17 @@ window.guardarFoto = async function () {
   const restoreButton = setBusyButton(document.getElementById('btn-guardar-foto'), 'Subiendo...');
 
   try {
-    await addDoc(collection(db, 'galeria'), {
+    const payload = {
       url: mediaUrl(pendingFoto.media) || pendingFoto.media,
       titulo: pendingFoto.titulo || '',
       orden: Date.now(),
       creado: serverTimestamp(),
-    });
+    };
+    const created = await addDoc(collection(db, 'galeria'), payload);
+    const legacyItem = await syncLegacyGalleryCreate(payload).catch(() => null);
+    if (legacyItem?.id && created?.id) {
+      await updateDoc(doc(db, 'galeria', created.id), { legacyId: legacyItem.id }).catch(() => {});
+    }
     clearAdminError('galeria');
     cancelarFoto();
     showOk('ok-galeria');
@@ -899,6 +998,9 @@ window.eliminarFoto = async function (id) {
   try {
     const foto = galeriaEnMemoria.find((item) => item.id === id);
     await deleteDoc(doc(db, 'galeria', id));
+    if (foto?.legacyId) {
+      await syncLegacyGalleryDelete(foto.legacyId).catch(() => {});
+    }
     if (foto?.url) {
       await deleteAdminMedia(foto.url).catch(() => {});
     }
@@ -1795,6 +1897,7 @@ window.guardarMarketing = async function () {
   try {
     const payload = readMarketingForm();
     await setDoc(doc(db, 'config', 'marketing'), payload);
+    await syncLegacyConfig('marketing', payload).catch(() => {});
     window.__marketingState = payload;
     clearAdminError('marketing');
     showOk('ok-marketing');
@@ -2242,6 +2345,7 @@ window.guardarNuevoServicio = async function () {
     };
 
     await setDoc(doc(db, 'config', 'servicios'), newData);
+    await syncLegacyConfig('servicios', newData).catch(() => {});
     serviciosEnMemoria = newData;
     clearAdminError('servicios');
 
@@ -2282,6 +2386,7 @@ window.eliminarServicio = async function (id, isBuiltin, nombre = '') {
     else delete newData[id];
 
     await setDoc(doc(db, 'config', 'servicios'), newData);
+    await syncLegacyConfig('servicios', newData).catch(() => {});
     serviciosEnMemoria = newData;
     clearAdminError('servicios');
 
