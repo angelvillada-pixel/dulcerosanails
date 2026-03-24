@@ -1317,6 +1317,121 @@ window.enviarResena = async function (e) {
   }
 };
 
+const DIRECT_REALFB_TIMEOUT_MS = 10000;
+
+function withRealtimeTimeout(promise, label, timeoutMs = DIRECT_REALFB_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${label} no respondio a tiempo.`));
+    }, timeoutMs);
+
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+window.guardarPromocion = async function () {
+  const titulo = document.getElementById('promo-titulo')?.value.trim();
+  if (!titulo) {
+    showAdminToast('El titulo de la promocion es obligatorio.', 'error');
+    return;
+  }
+
+  const restoreButton = setBusyButton(document.querySelector('#overlay-nueva-promo .btn-save'), 'Guardando...');
+
+  try {
+    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase');
+    await withRealtimeTimeout(
+      fb.addDoc(fb.collection(rdb, PROMOS_COLLECTION), {
+        titulo,
+        descripcion: document.getElementById('promo-desc')?.value.trim() || '',
+        descuento: document.getElementById('promo-descuento')?.value.trim() || '',
+        fechafin: document.getElementById('promo-fin')?.value || '',
+        activa: true,
+        creado: fb.serverTimestamp(),
+        creadoMs: Date.now(),
+      }),
+      'Guardar promocion',
+    );
+
+    document.getElementById('overlay-nueva-promo')?.classList.remove('show');
+    document.body.style.overflow = '';
+    realtimeState.promosAdmin.error = null;
+    realtimeState.promosPublic.error = null;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showOk('ok-promos');
+    showAdminToast(`Promocion "${titulo}" guardada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo guardar la promocion.');
+    realtimeState.promosAdmin.error = message;
+    realtimeState.promosPublic.error = message;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showAdminToast(message, 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
+window.enviarResena = async function (e) {
+  e.preventDefault();
+
+  if (typeof window.validateReviewFormInputs === 'function' && !window.validateReviewFormInputs()) {
+    return;
+  }
+
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = Number(document.getElementById('res-estrellas')?.value) || 5;
+  const servicio = document.getElementById('res-servicio')?.value.trim() || '';
+  const comentario = document.getElementById('res-comentario')?.value.trim();
+  const btn = document.getElementById('btn-resena');
+  const restoreButton = setBusyButton(btn, 'Enviando...');
+
+  try {
+    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase');
+    await withRealtimeTimeout(
+      fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
+        nombre,
+        estrellas,
+        servicio,
+        comentario,
+        aprobada: false,
+        creado: fb.serverTimestamp(),
+        creadoMs: Date.now(),
+      }),
+      'Enviar resena',
+    );
+
+    realtimeState.resenasAdmin.error = null;
+    document.getElementById('resena-form')?.reset();
+    ['res-nombre', 'res-servicio', 'res-comentario'].forEach((id) => window.__clearFieldError?.(document.getElementById(id)));
+    const ok = document.getElementById('resena-ok');
+    if (ok) {
+      ok.style.display = 'block';
+      setTimeout(() => {
+        ok.style.display = 'none';
+      }, 5000);
+    }
+    showAdminToast('Resena enviada. Quedo pendiente de aprobacion.', 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo enviar la resena.');
+    realtimeState.resenasPublic.error = message;
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
 const MARKETING_FORM_DEFAULTS = Object.freeze({
   urgencyEnabled: true,
   urgencyText: 'Cupos limitados esta semana. Agenda hoy y asegura tu lugar.',

@@ -1,5 +1,6 @@
 const API = 'https://dulce-rosa-api.onrender.com';
 const API_TIMEOUT_MS = 10000;
+const DIRECT_FIRESTORE_TIMEOUT_MS = 10000;
 const RENDER_RETRY_ATTEMPTS = 3;
 const RENDER_RETRY_DELAY_MS = 5000;
 const RENDER_WAKE_TTL_MS = 10 * 60 * 1000;
@@ -42,6 +43,25 @@ function rootOf(ref) {
 
 function shouldUseDirectFirestore(ref) {
   return DIRECT_FIRESTORE_ROOTS.has(rootOf(ref));
+}
+
+function withTimeout(promise, label, timeoutMs = DIRECT_FIRESTORE_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${label} excedio ${Math.round(timeoutMs / 1000)}s.`));
+    }, timeoutMs);
+
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function getRealFirebase() {
@@ -221,7 +241,10 @@ async function renderUpdateDoc(ref, data) {
 async function tryDirectFirestore(ref, operation, fallback) {
   try {
     const { db: dbInstance, fb } = await getRealFirebase();
-    return await operation(dbInstance, fb, toRealRef(ref, dbInstance, fb));
+    return await withTimeout(
+      operation(dbInstance, fb, toRealRef(ref, dbInstance, fb)),
+      `Firebase directo en ${ref.path}`,
+    );
   } catch (error) {
     console.warn(`Firebase directo fallo para ${ref.path}. Se usa fallback.`, error);
     return fallback(error);
