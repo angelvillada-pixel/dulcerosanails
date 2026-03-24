@@ -166,6 +166,24 @@ function formatError(error, fallback = 'Error desconocido.') {
   return message;
 }
 
+function canUseCompatibleFallback(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (!message) return true;
+
+  if (
+    message.includes('no tiene permisos de admin') ||
+    message.includes('falta el token de autenticacion admin') ||
+    message.includes('debes iniciar sesion como admin') ||
+    message.includes('http 401') ||
+    message.includes('http 403') ||
+    message.includes('la cuenta autenticada no tiene permisos')
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function escapeHtml(value = '') {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -677,6 +695,11 @@ window.subirImagenServicio = async function (id, input) {
     if (prev) prev.innerHTML = `<img src="${mediaUrl(uploaded)}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;object-position:50% 32%"/>`;
     showAdminToast('Imagen del servicio subida y lista para guardar.', 'success');
   } catch (uploadError) {
+    if (!canUseCompatibleFallback(uploadError)) {
+      showAdminToast(formatError(uploadError, 'No tienes permisos para subir imagenes al storage remoto.'), 'error');
+      input.value = '';
+      return;
+    }
     try {
       const b64 = await comprimirImagen(file, 1200, 0.82);
       window._svcImages[id] = b64;
@@ -855,6 +878,11 @@ window.previsualizarLogo = async function (input) {
     btn.style.display = 'inline-block';
     showAdminToast('Logo subido y listo para guardar.', 'success');
   } catch (uploadError) {
+    if (!canUseCompatibleFallback(uploadError)) {
+      showAdminToast(formatError(uploadError, 'No tienes permisos para subir el logo al storage remoto.'), 'error');
+      input.value = '';
+      return;
+    }
     try {
       pendingLogoMedia = await comprimirImagen(file, 600, 0.82);
       if (preview) preview.src = mediaUrl(pendingLogoMedia) || pendingLogoMedia;
@@ -931,6 +959,11 @@ window.seleccionarFoto = async function (input) {
     document.getElementById('btn-guardar-foto').style.display = 'inline-block';
     showAdminToast('Foto subida y lista para guardar.', 'success');
   } catch (uploadError) {
+    if (!canUseCompatibleFallback(uploadError)) {
+      showAdminToast(formatError(uploadError, 'No tienes permisos para subir fotos al storage remoto.'), 'error');
+      input.value = '';
+      return;
+    }
     try {
       const b64 = await comprimirImagen(file, 1200, 0.8);
       pendingFoto = { media: b64, titulo };
