@@ -22,6 +22,7 @@ let pendingFoto = null;
 let pendingLogoMedia = null;
 let galeriaEnMemoria = [];
 let serviciosEnMemoria = {};
+let siteConfigCache = {};
 window._svcImages = {};
 
 const PROMOS_COLLECTION = 'promociones';
@@ -37,6 +38,17 @@ const realtimeState = {
 
 let realFBPromise = null;
 let legacyMirrorPromise = null;
+
+function readAdminSessionCache(key, fallback = null) {
+  try {
+    const raw = sessionStorage.getItem(`dulce-rosa:${key}`);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+siteConfigCache = readAdminSessionCache('site', {});
 
 function realFB() {
   if (realFBPromise) return realFBPromise;
@@ -421,8 +433,21 @@ function syncHoraChipLabels() {
 syncHoraChipLabels();
 
 window.switchTab = function (tab) {
+  const targetId = `tab-${tab}`;
+  const nextPane = document.getElementById(targetId);
+  if (!nextPane) return;
+
   document.querySelectorAll('.tab-btn').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
-  document.querySelectorAll('.tab-pane').forEach((pane) => pane.classList.toggle('active', pane.id === `tab-${tab}`));
+  document.querySelectorAll('.tab-pane').forEach((pane) => {
+    if (pane !== nextPane) {
+      pane.classList.remove('active', 'tab-pane-enter');
+    }
+  });
+
+  nextPane.classList.add('active');
+  nextPane.classList.remove('tab-pane-enter');
+  nextPane.scrollTop = 0;
+  requestAnimationFrame(() => nextPane.classList.add('tab-pane-enter'));
 };
 
 window.renderCitas = async function () {
@@ -535,6 +560,7 @@ window.cargarAdminConfig = async function () {
   try {
     const snap = await getDoc(doc(db, 'config', 'site'));
     const data = snap.exists() ? snap.data() : {};
+    siteConfigCache = { ...data };
     clearAdminError('config');
     if (data.nequi && el) el.value = data.nequi;
     const activas = data.horarios || HORAS_DEFAULT;
@@ -554,17 +580,17 @@ window.guardarConfig = async function () {
 
   try {
     const ref = doc(db, 'config', 'site');
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? snap.data() : {};
-    const payload = { ...data, nequi, horarios: activas };
+    const payload = { ...(siteConfigCache || {}), nequi, horarios: activas };
     await setDoc(ref, payload);
-    await syncLegacyConfig('site', payload).catch(() => {});
+    siteConfigCache = { ...payload };
     window._horasDisponibles = activas;
     document.querySelectorAll('.nequi-num').forEach((item) => {
       item.textContent = nequi;
     });
     clearAdminError('config');
     showOk('ok-config');
+    showAdminToast('Configuracion guardada.', 'success');
+    syncLegacyConfig('site', payload).catch(() => {});
   } catch (error) {
     showAdminError('config', formatError(error, 'No se pudo guardar la configuracion.'));
   } finally {
@@ -1037,16 +1063,19 @@ window.eliminarFoto = async function (id) {
     : Promise.resolve(confirm(`Eliminar ${titulo}?`)));
   if (!accepted) return;
 
+  const previousItems = [...galeriaEnMemoria];
+  const foto = previousItems.find((item) => item.id === id);
+  commitGaleriaState(previousItems.filter((item) => item.id !== id));
+  clearAdminError('galeria');
+
   try {
-    const foto = galeriaEnMemoria.find((item) => item.id === id);
     await deleteDoc(doc(db, 'galeria', id));
     if (foto?.url) {
-      await deleteAdminMedia(foto.url).catch(() => {});
+      deleteAdminMedia(foto.url).catch(() => {});
     }
-    commitGaleriaState(galeriaEnMemoria.filter((item) => item.id !== id));
-    clearAdminError('galeria');
     showAdminToast(`${titulo} fue eliminada.`, 'success');
   } catch (error) {
+    commitGaleriaState(previousItems);
     showAdminError('galeria', formatError(error, 'No se pudo eliminar la foto.'));
     showAdminToast(`No se pudo eliminar ${titulo}.`, 'error');
   }
@@ -1626,6 +1655,65 @@ window.enviarResena = async function (e) {
     restoreButton();
   }
 };
+
+window.__enviarResenaCanon = async function (e) {
+  e.preventDefault();
+
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = Number(document.getElementById('res-estrellas')?.value) || 5;
+  const servicio = document.getElementById('res-servicio')?.value.trim() || '';
+  const comentario = document.getElementById('res-comentario')?.value.trim();
+
+  if (!nombre || !comentario) {
+    showAdminToast('Nombre y comentario son obligatorios.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-resena');
+  const ok = document.getElementById('resena-ok');
+  const restoreButton = setBusyButton(btn, 'Enviando...');
+  if (ok) ok.style.display = 'none';
+
+  try {
+    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase');
+    await withRealtimeTimeout(
+      fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
+        nombre,
+        estrellas,
+        servicio,
+        comentario,
+        aprobada: false,
+        creado: fb.serverTimestamp(),
+        creadoMs: Date.now(),
+      }),
+      'Enviar resena',
+      12000,
+    );
+
+    realtimeState.resenasAdmin.error = null;
+    realtimeState.resenasPublic.error = null;
+    document.getElementById('resena-form')?.reset();
+
+    if (ok) {
+      ok.textContent = 'Resena enviada. Sera aprobada pronto.';
+      ok.style.display = 'block';
+      setTimeout(() => {
+        ok.style.display = 'none';
+      }, 5000);
+    }
+
+    showAdminToast('Resena enviada. Sera aprobada pronto.', 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo enviar la resena.');
+    realtimeState.resenasPublic.error = message;
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
+window.enviarResena = window.__enviarResenaCanon;
 
 // Canonical production-safe overrides kept at EOF so legacy duplicates above cannot override them.
 window.guardarPromocion = async function () {

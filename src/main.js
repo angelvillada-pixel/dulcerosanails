@@ -1322,6 +1322,7 @@ function initReveal() {
 document.addEventListener('DOMContentLoaded',()=>{
   const fi=document.getElementById('inp-fecha');
   const scrollTopBtn = document.getElementById('scroll-top-btn');
+  const resenaForm = document.getElementById('resena-form');
   if(fi) fi.min=fechaHoyColombia();
   [['inp-nombre', 'input'], ['inp-tel', 'input'], ['inp-servicio', 'change'], ['inp-fecha', 'change'], ['res-nombre', 'input'], ['res-servicio', 'input'], ['res-comentario', 'input']].forEach(([id, eventName]) => {
     const field = document.getElementById(id);
@@ -1339,6 +1340,16 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.addEventListener('click',e=>{
     if(!e.target.closest('.service-card')) document.querySelectorAll('.service-card.tapped').forEach(c=>c.classList.remove('tapped'));
   });
+  if (resenaForm) {
+    resenaForm.onsubmit = (event) => {
+      const handler = window.__enviarResenaCanon || window.enviarResena;
+      if (typeof handler === 'function') {
+        return handler(event);
+      }
+      event.preventDefault();
+      return false;
+    };
+  }
   scrollTopBtn?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
   initReveal();
   actualizarSelectServicios();
