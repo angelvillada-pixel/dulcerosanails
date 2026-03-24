@@ -12,7 +12,7 @@ import {
   arrayRemove,
   serverTimestamp,
 } from './firebase.js';
-import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, to12h } from './data.js';
+import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, to12h, validarArchivoImagen } from './data.js';
 
 let pendingFoto = null;
 let serviciosEnMemoria = {};
@@ -139,6 +139,15 @@ function showAdminToast(message, type = 'info') {
     return;
   }
   console[type === 'error' ? 'error' : 'log'](message);
+}
+
+function validarSeleccionImagen(file, scope = 'Imagen') {
+  const validationError = validarArchivoImagen(file);
+  if (!validationError) return null;
+
+  const message = `${scope}: ${validationError}`;
+  showAdminToast(message, 'error');
+  return message;
 }
 
 function debounce(fn, wait = 300) {
@@ -561,12 +570,22 @@ function _renderSvcAdmin(cont, serviciosData) {
 window.subirImagenServicio = function (id, input) {
   const file = input.files[0];
   if (!file) return;
+  if (validarSeleccionImagen(file, 'Imagen del servicio')) {
+    input.value = '';
+    return;
+  }
 
-  comprimirImagen(file, 600, 0.88).then((b64) => {
-    window._svcImages[id] = b64;
-    const prev = document.getElementById(`svc-img-preview-${id}`);
-    if (prev) prev.innerHTML = `<img src="${b64}" style="width:52px;height:52px;border-radius:8px;object-fit:cover"/>`;
-  });
+  comprimirImagen(file, 1200, 0.82)
+    .then((b64) => {
+      window._svcImages[id] = b64;
+      const prev = document.getElementById(`svc-img-preview-${id}`);
+      if (prev) prev.innerHTML = `<img src="${b64}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;object-position:50% 32%"/>`;
+      showAdminToast('Imagen del servicio lista para guardar.', 'success');
+    })
+    .catch((error) => {
+      showAdminToast(formatError(error, 'No se pudo procesar la imagen del servicio.'), 'error');
+      input.value = '';
+    });
 };
 
 window.guardarServicios = async function () {
@@ -704,13 +723,22 @@ window.eliminarServicio = async function (id, isBuiltin) {
 window.previsualizarLogo = function (input) {
   const file = input.files[0];
   if (!file) return;
+  if (validarSeleccionImagen(file, 'Logo')) {
+    input.value = '';
+    return;
+  }
 
-  comprimirImagen(file, 300, 0.85).then((b64) => {
-    document.getElementById('preview-logo-admin').src = b64;
-    const btn = document.getElementById('btn-guardar-logo');
-    btn.dataset.b64 = b64;
-    btn.style.display = 'inline-block';
-  });
+  comprimirImagen(file, 600, 0.82)
+    .then((b64) => {
+      document.getElementById('preview-logo-admin').src = b64;
+      const btn = document.getElementById('btn-guardar-logo');
+      btn.dataset.b64 = b64;
+      btn.style.display = 'inline-block';
+    })
+    .catch((error) => {
+      showAdminToast(formatError(error, 'No se pudo procesar el logo.'), 'error');
+      input.value = '';
+    });
 };
 
 window.guardarLogo = async function (btn) {
@@ -741,23 +769,32 @@ window.guardarLogo = async function (btn) {
 window.seleccionarFoto = function (input) {
   const file = input.files[0];
   if (!file) return;
+  if (validarSeleccionImagen(file, 'Foto de galeria')) {
+    input.value = '';
+    return;
+  }
 
   const titulo = document.getElementById('foto-titulo').value.trim();
-  comprimirImagen(file, 600, 0.82).then((b64) => {
-    pendingFoto = { b64, titulo };
-    const prev = document.getElementById('foto-preview-pending');
-    if (!prev) return;
+  comprimirImagen(file, 1200, 0.8)
+    .then((b64) => {
+      pendingFoto = { b64, titulo };
+      const prev = document.getElementById('foto-preview-pending');
+      if (!prev) return;
 
-    prev.innerHTML = `
-      <div class="galeria-pending">
-        <img src="${b64}" alt=""/>
-        <div><div style="color:#fff;font-size:.8rem">${escapeHtml(titulo || 'Sin titulo')}</div></div>
-        <button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">x</button>
-      </div>
-    `;
-    prev.style.display = 'block';
-    document.getElementById('btn-guardar-foto').style.display = 'inline-block';
-  });
+      prev.innerHTML = `
+        <div class="galeria-pending">
+          <img src="${b64}" alt=""/>
+          <div><div style="color:#fff;font-size:.8rem">${escapeHtml(titulo || 'Sin titulo')}</div></div>
+          <button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">x</button>
+        </div>
+      `;
+      prev.style.display = 'block';
+      document.getElementById('btn-guardar-foto').style.display = 'inline-block';
+    })
+    .catch((error) => {
+      showAdminToast(formatError(error, 'No se pudo procesar la foto.'), 'error');
+      input.value = '';
+    });
 };
 
 window.cancelarFoto = function () {
@@ -1312,6 +1349,101 @@ window.enviarResena = async function (e) {
     realtimeState.resenasPublic.error = message;
     renderResenasPublicGrid();
     alert(`Error al enviar la resena: ${message}`);
+  } finally {
+    restoreButton();
+  }
+};
+
+// Canonical production-safe overrides kept at EOF so legacy duplicates above cannot override them.
+window.guardarPromocion = async function () {
+  const titulo = document.getElementById('promo-titulo')?.value.trim();
+  if (!titulo) {
+    showAdminToast('El titulo de la promocion es obligatorio.', 'error');
+    return;
+  }
+
+  const restoreButton = setBusyButton(document.querySelector('#overlay-nueva-promo .btn-save'), 'Guardando...');
+
+  try {
+    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase');
+    await withRealtimeTimeout(
+      fb.addDoc(fb.collection(rdb, PROMOS_COLLECTION), {
+        titulo,
+        descripcion: document.getElementById('promo-desc')?.value.trim() || '',
+        descuento: document.getElementById('promo-descuento')?.value.trim() || '',
+        fechafin: document.getElementById('promo-fin')?.value || '',
+        activa: true,
+        creado: fb.serverTimestamp(),
+        creadoMs: Date.now(),
+      }),
+      'Guardar promocion',
+    );
+
+    document.getElementById('overlay-nueva-promo')?.classList.remove('show');
+    document.body.style.overflow = '';
+    realtimeState.promosAdmin.error = null;
+    realtimeState.promosPublic.error = null;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showOk('ok-promos');
+    showAdminToast(`Promocion "${titulo}" guardada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo guardar la promocion.');
+    realtimeState.promosAdmin.error = message;
+    realtimeState.promosPublic.error = message;
+    renderAdminPromociones();
+    renderPromosPublicGrid();
+    showAdminToast(message, 'error');
+  } finally {
+    restoreButton();
+  }
+};
+
+window.enviarResena = async function (e) {
+  e.preventDefault();
+
+  if (typeof window.validateReviewFormInputs === 'function' && !window.validateReviewFormInputs()) {
+    return;
+  }
+
+  const nombre = document.getElementById('res-nombre')?.value.trim();
+  const estrellas = Number(document.getElementById('res-estrellas')?.value) || 5;
+  const servicio = document.getElementById('res-servicio')?.value.trim() || '';
+  const comentario = document.getElementById('res-comentario')?.value.trim();
+  const btn = document.getElementById('btn-resena');
+  const restoreButton = setBusyButton(btn, 'Enviando...');
+
+  try {
+    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase');
+    await withRealtimeTimeout(
+      fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
+        nombre,
+        estrellas,
+        servicio,
+        comentario,
+        aprobada: false,
+        creado: fb.serverTimestamp(),
+        creadoMs: Date.now(),
+      }),
+      'Enviar resena',
+    );
+
+    realtimeState.resenasAdmin.error = null;
+    document.getElementById('resena-form')?.reset();
+    ['res-nombre', 'res-servicio', 'res-comentario'].forEach((id) => window.__clearFieldError?.(document.getElementById(id)));
+    const ok = document.getElementById('resena-ok');
+    if (ok) {
+      ok.style.display = 'block';
+      setTimeout(() => {
+        ok.style.display = 'none';
+      }, 5000);
+    }
+    showAdminToast('Resena enviada. Quedo pendiente de aprobacion.', 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo enviar la resena.');
+    realtimeState.resenasPublic.error = message;
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
   } finally {
     restoreButton();
   }

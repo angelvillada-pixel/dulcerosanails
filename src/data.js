@@ -1,4 +1,6 @@
 export const HORAS_DEFAULT = ['8:00','9:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
 // Convierte '13:00' → '1:00 P.M.' | '8:00' → '8:00 A.M.'
 export function to12h(hora) {
@@ -40,8 +42,22 @@ export function fechaHoyColombia() {
 }
 export function formatCOP(n) { return '$'+Number(n).toLocaleString('es-CO'); }
 
-export function comprimirImagen(file, maxW=400, q=0.65, _objectPosition='center') {
-  return new Promise(res => {
+export function validarArchivoImagen(file) {
+  if (!file) return 'No se selecciono ninguna imagen.';
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return 'Solo se permiten imagenes JPG, PNG o WebP.';
+  }
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    return 'La imagen no puede superar 5 MB.';
+  }
+  return null;
+}
+
+export function comprimirImagen(file, maxW=1200, q=0.82, _objectPosition='center') {
+  const validationError = validarArchivoImagen(file);
+  if (validationError) return Promise.reject(new Error(validationError));
+
+  return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = e => {
       const img = new Image();
@@ -51,10 +67,13 @@ export function comprimirImagen(file, maxW=400, q=0.65, _objectPosition='center'
         const c=document.createElement('canvas');
         c.width=w;c.height=h;
         c.getContext('2d').drawImage(img,0,0,w,h);
-        res(c.toDataURL('image/jpeg',q));
+        const webp = c.toDataURL('image/webp',q);
+        resolve(webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/jpeg',q));
       };
+      img.onerror = () => reject(new Error('La imagen no se pudo procesar.'));
       img.src=e.target.result;
     };
+    r.onerror = () => reject(new Error('No se pudo leer la imagen.'));
     r.readAsDataURL(file);
   });
 }

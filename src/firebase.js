@@ -1,6 +1,7 @@
 const API = 'https://dulce-rosa-api.onrender.com';
 const API_TIMEOUT_MS = 10000;
 const DIRECT_FIRESTORE_TIMEOUT_MS = 10000;
+const DIRECT_LISTENER_BOOTSTRAP_MS = 2500;
 const RENDER_RETRY_ATTEMPTS = 3;
 const RENDER_RETRY_DELAY_MS = 5000;
 const RENDER_WAKE_TTL_MS = 10 * 60 * 1000;
@@ -345,12 +346,71 @@ function startRenderPolling(ref, callback, onError = () => {}) {
   return () => clearInterval(intervalId);
 }
 
+function snapshotSignature(ref, snapshot) {
+  if (ref._ref === 'doc') return JSON.stringify(snapshot?.data?.() || null);
+  return JSON.stringify((snapshot?.docs || []).map((item) => ({ id: item.id, data: item.data() })));
+}
+
+function snapshotHasContent(ref, snapshot) {
+  if (ref._ref === 'doc') return Boolean(snapshot?.exists?.());
+  return Array.isArray(snapshot?.docs) && snapshot.docs.length > 0;
+}
+
 export function onSnapshot(ref, callback, onError = () => {}) {
   if (!shouldUseDirectFirestore(ref)) return startRenderPolling(ref, callback, onError);
 
   let unsubDirect = null;
   let unsubFallback = null;
   let active = true;
+  let delivered = false;
+  let directEmitted = false;
+  let lastSignature = null;
+  let guardTimer = null;
+
+  const clearGuard = () => {
+    if (!guardTimer) return;
+    clearTimeout(guardTimer);
+    guardTimer = null;
+  };
+
+  const emitSnapshot = (snapshot) => {
+    if (!active || !snapshot) return false;
+    const nextSignature = snapshotSignature(ref, snapshot);
+    if (nextSignature === lastSignature) return false;
+    lastSignature = nextSignature;
+    delivered = true;
+    clearGuard();
+    callback(snapshot);
+    return true;
+  };
+
+  const startFallback = () => {
+    if (!active || unsubFallback) return;
+    unsubFallback = startRenderPolling(
+      ref,
+      (snapshot) => {
+        emitSnapshot(snapshot);
+      },
+      onError,
+    );
+  };
+
+  const bootstrapSnapshot = async () => {
+    try {
+      const snapshot = ref._ref === 'doc' ? await getDoc(ref) : await getDocs(ref);
+      if (!active) return;
+      emitSnapshot(snapshot);
+      if (!directEmitted) startFallback();
+    } catch (error) {
+      if (!active) return;
+      onError(error);
+      if (!delivered) startFallback();
+    }
+  };
+
+  guardTimer = setTimeout(() => {
+    if (!delivered) startFallback();
+  }, DIRECT_LISTENER_BOOTSTRAP_MS);
 
   (async () => {
     try {
@@ -359,7 +419,16 @@ export function onSnapshot(ref, callback, onError = () => {}) {
       const realRef = toRealRef(ref, dbInstance, fb);
       unsubDirect = fb.onSnapshot(
         realRef,
-        callback,
+        (snapshot) => {
+          directEmitted = true;
+          emitSnapshot(snapshot);
+          if (snapshotHasContent(ref, snapshot) && unsubFallback) {
+            unsubFallback();
+            unsubFallback = null;
+          } else if (!snapshotHasContent(ref, snapshot)) {
+            startFallback();
+          }
+        },
         (error) => {
           console.warn(`Firebase directo escuchando ${ref.path} fallo. Se usa fallback.`, error);
           onError(error);
@@ -367,18 +436,20 @@ export function onSnapshot(ref, callback, onError = () => {}) {
             unsubDirect();
             unsubDirect = null;
           }
-          if (!unsubFallback && active) unsubFallback = startRenderPolling(ref, callback, onError);
+          startFallback();
         },
       );
+      bootstrapSnapshot();
     } catch (error) {
       console.warn(`Firebase directo no disponible para ${ref.path}. Se usa fallback.`, error);
       onError(error);
-      if (!unsubFallback && active) unsubFallback = startRenderPolling(ref, callback, onError);
+      startFallback();
     }
   })();
 
   return () => {
     active = false;
+    clearGuard();
     if (unsubDirect) unsubDirect();
     if (unsubFallback) unsubFallback();
   };
