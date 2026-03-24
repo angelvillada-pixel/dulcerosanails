@@ -1,3 +1,5 @@
+import { mediaUrl } from './media.js';
+
 export function renderGaleriaSkeleton(count = 6) {
   const grid = document.getElementById('galeria-grid-pub');
   if (!grid) return;
@@ -29,8 +31,8 @@ export function renderGaleriaPublica(fotos) {
 
   grid.innerHTML = fotos
     .map((foto) => `
-      <div class="galeria-grid-card" onclick="abrirLightbox('${foto.url.replace(/'/g, "\\'")}')">
-        <img src="${foto.url}" alt="${foto.titulo || 'Trabajo'}" loading="lazy" decoding="async"/>
+      <div class="galeria-grid-card" onclick="abrirLightbox('${mediaUrl(foto.url || foto.media || foto).replace(/'/g, "\\'")}')">
+        <img src="${mediaUrl(foto.url || foto.media || foto)}" alt="${foto.titulo || 'Trabajo'}" loading="lazy" decoding="async"/>
         ${foto.titulo ? `<div class="g-label">${foto.titulo}</div>` : ''}
       </div>
     `)

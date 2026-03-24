@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Dulce Rosa Nails Spa</title>
+  <desc id="desc">Nail spa en Castilla, Medellin. Agenda tu cita en Dulce Rosa Nails Spa.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDF6F0"/>
+      <stop offset="100%" stop-color="#F5D6E0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="70%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#C4637E" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#C4637E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="860" cy="320" r="170" fill="#FDF0F4" stroke="#E8D5B0" stroke-width="6"/>
+  <circle cx="860" cy="320" r="132" fill="#F5D6E0"/>
+  <text x="120" y="190" font-family="Cormorant Garamond, serif" font-size="76" fill="#9B3A5A">Dulce Rosa Nails Spa</text>
+  <text x="120" y="265" font-family="Cormorant Garamond, serif" font-size="48" fill="#2A1520">El cuidado que tus manos merecen</text>
+  <text x="120" y="330" font-family="DM Sans, Arial, sans-serif" font-size="26" fill="#7A5A64">Castilla, Medellin · Citas online · Promociones · Galeria</text>
+  <rect x="120" y="390" rx="28" ry="28" width="330" height="64" fill="#9B3A5A"/>
+  <text x="165" y="432" font-family="DM Sans, Arial, sans-serif" font-size="28" fill="#FFFFFF">Agendar cita</text>
+  <text x="785" y="340" font-family="Cormorant Garamond, serif" font-size="88" fill="#9B3A5A">💅</text>
+</svg>

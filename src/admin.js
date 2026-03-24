@@ -13,8 +13,11 @@ import {
   serverTimestamp,
 } from './firebase.js';
 import { PRECIOS_DEFAULT, HORAS_DEFAULT, SERVICIO_KEYS, comprimirImagen, to12h, validarArchivoImagen } from './data.js';
+import { deleteAdminMedia, mediaKey, mediaUrl, uploadAdminMedia } from './media.js';
 
 let pendingFoto = null;
+let pendingLogoMedia = null;
+let galeriaEnMemoria = [];
 let serviciosEnMemoria = {};
 window._svcImages = {};
 
@@ -533,7 +536,7 @@ function _renderSvcAdmin(cont, serviciosData) {
     services.forEach((service) => {
       const info = serviciosData[service.id] || {};
       const nombre = info.nombre || service.nombre;
-      const imagen = info.imagen || null;
+      const imagen = mediaUrl(info.imagen);
       const isBuiltin = !!SERVICIO_KEYS.find((item) => item.id === service.id);
 
       const card = document.createElement('div');
@@ -567,7 +570,7 @@ function _renderSvcAdmin(cont, serviciosData) {
   });
 }
 
-window.subirImagenServicio = function (id, input) {
+window.subirImagenServicio = async function (id, input) {
   const file = input.files[0];
   if (!file) return;
   if (validarSeleccionImagen(file, 'Imagen del servicio')) {
@@ -575,17 +578,28 @@ window.subirImagenServicio = function (id, input) {
     return;
   }
 
-  comprimirImagen(file, 1200, 0.82)
-    .then((b64) => {
+  const prev = document.getElementById(`svc-img-preview-${id}`);
+  const tempUrl = URL.createObjectURL(file);
+  if (prev) prev.innerHTML = `<img src="${tempUrl}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;object-position:50% 32%"/>`;
+
+  try {
+    const uploaded = await uploadAdminMedia(file, { folder: 'servicios', filename: id });
+    window._svcImages[id] = uploaded;
+    if (prev) prev.innerHTML = `<img src="${mediaUrl(uploaded)}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;object-position:50% 32%"/>`;
+    showAdminToast('Imagen del servicio subida y lista para guardar.', 'success');
+  } catch (uploadError) {
+    try {
+      const b64 = await comprimirImagen(file, 1200, 0.82);
       window._svcImages[id] = b64;
-      const prev = document.getElementById(`svc-img-preview-${id}`);
       if (prev) prev.innerHTML = `<img src="${b64}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;object-position:50% 32%"/>`;
-      showAdminToast('Imagen del servicio lista para guardar.', 'success');
-    })
-    .catch((error) => {
+      showAdminToast('No habia storage remoto listo. Se usara el modo compatible actual.', 'info');
+    } catch (error) {
       showAdminToast(formatError(error, 'No se pudo procesar la imagen del servicio.'), 'error');
       input.value = '';
-    });
+    }
+  } finally {
+    URL.revokeObjectURL(tempUrl);
+  }
 };
 
 window.guardarServicios = async function () {
@@ -597,17 +611,26 @@ window.guardarServicios = async function () {
     const customKeys = existing._custom || [];
     const allKeys = [...SERVICIO_KEYS, ...customKeys.filter((custom) => !SERVICIO_KEYS.find((builtin) => builtin.id === custom.id))];
     const servicios = { _custom: customKeys };
+    const removedMedia = [];
 
     allKeys.forEach((service) => {
       const nameEl = document.getElementById(`svc-name-${service.id}`);
       if (!nameEl) return;
+
+      const previousImage = existing[service.id]?.imagen || null;
+      const nextImage = window._svcImages[service.id] || previousImage || null;
+      const previousKey = mediaKey(previousImage);
+      const nextKey = mediaKey(nextImage);
+      if (window._svcImages[service.id] && previousKey && previousKey !== nextKey) {
+        removedMedia.push(previousImage);
+      }
 
       servicios[service.id] = {
         nombre: nameEl.value.trim() || service.nombre,
         precio: Number(document.getElementById(`svc-precio-${service.id}`)?.value) || 0,
         descripcion: document.getElementById(`svc-desc-${service.id}`)?.value.trim() || '',
         detalles: document.getElementById(`svc-det-${service.id}`)?.value.trim() || '',
-        imagen: window._svcImages[service.id] || existing[service.id]?.imagen || null,
+        imagen: nextImage,
         emoji: service.emoji || 'N',
         cat: service.cat,
         desde: service.desde || false,
@@ -616,6 +639,7 @@ window.guardarServicios = async function () {
     });
 
     await setDoc(doc(db, 'config', 'servicios'), servicios);
+    await Promise.allSettled(removedMedia.map((item) => deleteAdminMedia(item)));
     serviciosEnMemoria = servicios;
     window._svcImages = {};
     clearAdminError('servicios');
@@ -720,7 +744,7 @@ window.eliminarServicio = async function (id, isBuiltin) {
   }
 };
 
-window.previsualizarLogo = function (input) {
+window.previsualizarLogo = async function (input) {
   const file = input.files[0];
   if (!file) return;
   if (validarSeleccionImagen(file, 'Logo')) {
@@ -728,22 +752,34 @@ window.previsualizarLogo = function (input) {
     return;
   }
 
-  comprimirImagen(file, 600, 0.82)
-    .then((b64) => {
-      document.getElementById('preview-logo-admin').src = b64;
+  const preview = document.getElementById('preview-logo-admin');
+  const tempUrl = URL.createObjectURL(file);
+  if (preview) preview.src = tempUrl;
+
+  try {
+    pendingLogoMedia = await uploadAdminMedia(file, { folder: 'logos', filename: 'logo-dulce-rosa' });
+    if (preview) preview.src = mediaUrl(pendingLogoMedia);
+    const btn = document.getElementById('btn-guardar-logo');
+    btn.style.display = 'inline-block';
+    showAdminToast('Logo subido y listo para guardar.', 'success');
+  } catch (uploadError) {
+    try {
+      pendingLogoMedia = await comprimirImagen(file, 600, 0.82);
+      if (preview) preview.src = mediaUrl(pendingLogoMedia) || pendingLogoMedia;
       const btn = document.getElementById('btn-guardar-logo');
-      btn.dataset.b64 = b64;
       btn.style.display = 'inline-block';
-    })
-    .catch((error) => {
+      showAdminToast('No habia storage remoto listo. Se usara el modo compatible actual.', 'info');
+    } catch (error) {
       showAdminToast(formatError(error, 'No se pudo procesar el logo.'), 'error');
       input.value = '';
-    });
+    }
+  } finally {
+    URL.revokeObjectURL(tempUrl);
+  }
 };
 
 window.guardarLogo = async function (btn) {
-  const b64 = btn.dataset.b64;
-  if (!b64) return;
+  if (!pendingLogoMedia) return;
 
   const restoreButton = setBusyButton(btn, 'Guardando...');
 
@@ -751,11 +787,15 @@ window.guardarLogo = async function (btn) {
     const ref = doc(db, 'config', 'site');
     const snap = await getDoc(ref);
     const data = snap.exists() ? snap.data() : {};
-    await setDoc(ref, { ...data, logo: b64 });
+    const previousLogo = data.logo || null;
+    await setDoc(ref, { ...data, logo: pendingLogoMedia });
     document.querySelectorAll('.site-logo').forEach((item) => {
-      item.src = b64;
+      item.src = mediaUrl(pendingLogoMedia) || pendingLogoMedia;
     });
-    delete btn.dataset.b64;
+    if (mediaKey(previousLogo) && mediaKey(previousLogo) !== mediaKey(pendingLogoMedia)) {
+      await deleteAdminMedia(previousLogo).catch(() => {});
+    }
+    pendingLogoMedia = null;
     btn.style.display = 'none';
     clearAdminError('logo');
     showOk('ok-logo');
@@ -766,7 +806,7 @@ window.guardarLogo = async function (btn) {
   }
 };
 
-window.seleccionarFoto = function (input) {
+window.seleccionarFoto = async function (input) {
   const file = input.files[0];
   if (!file) return;
   if (validarSeleccionImagen(file, 'Foto de galeria')) {
@@ -775,26 +815,43 @@ window.seleccionarFoto = function (input) {
   }
 
   const titulo = document.getElementById('foto-titulo').value.trim();
-  comprimirImagen(file, 1200, 0.8)
-    .then((b64) => {
-      pendingFoto = { b64, titulo };
-      const prev = document.getElementById('foto-preview-pending');
-      if (!prev) return;
+  const prev = document.getElementById('foto-preview-pending');
+  const tempUrl = URL.createObjectURL(file);
+  if (prev) {
+    prev.innerHTML = `
+      <div class="galeria-pending">
+        <img src="${tempUrl}" alt=""/>
+        <div><div style="color:#fff;font-size:.8rem">${escapeHtml(titulo || 'Sin titulo')}</div></div>
+        <button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">x</button>
+      </div>
+    `;
+    prev.style.display = 'block';
+  }
 
-      prev.innerHTML = `
-        <div class="galeria-pending">
-          <img src="${b64}" alt=""/>
-          <div><div style="color:#fff;font-size:.8rem">${escapeHtml(titulo || 'Sin titulo')}</div></div>
-          <button onclick="cancelarFoto()" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.1rem">x</button>
-        </div>
-      `;
-      prev.style.display = 'block';
+  try {
+    const uploaded = await uploadAdminMedia(file, { folder: 'galeria', filename: titulo || 'galeria' });
+    pendingFoto = { media: uploaded, titulo };
+    if (prev) {
+      prev.querySelector('img').src = mediaUrl(uploaded);
+    }
+    document.getElementById('btn-guardar-foto').style.display = 'inline-block';
+    showAdminToast('Foto subida y lista para guardar.', 'success');
+  } catch (uploadError) {
+    try {
+      const b64 = await comprimirImagen(file, 1200, 0.8);
+      pendingFoto = { media: b64, titulo };
+      if (prev) {
+        prev.querySelector('img').src = b64;
+      }
       document.getElementById('btn-guardar-foto').style.display = 'inline-block';
-    })
-    .catch((error) => {
+      showAdminToast('No habia storage remoto listo. Se usara el modo compatible actual.', 'info');
+    } catch (error) {
       showAdminToast(formatError(error, 'No se pudo procesar la foto.'), 'error');
       input.value = '';
-    });
+    }
+  } finally {
+    URL.revokeObjectURL(tempUrl);
+  }
 };
 
 window.cancelarFoto = function () {
@@ -817,7 +874,7 @@ window.guardarFoto = async function () {
 
   try {
     await addDoc(collection(db, 'galeria'), {
-      url: pendingFoto.b64,
+      url: mediaUrl(pendingFoto.media) || pendingFoto.media,
       titulo: pendingFoto.titulo || '',
       orden: Date.now(),
       creado: serverTimestamp(),
@@ -840,7 +897,11 @@ window.eliminarFoto = async function (id) {
   if (!accepted) return;
 
   try {
+    const foto = galeriaEnMemoria.find((item) => item.id === id);
     await deleteDoc(doc(db, 'galeria', id));
+    if (foto?.url) {
+      await deleteAdminMedia(foto.url).catch(() => {});
+    }
     clearAdminError('galeria');
     showAdminToast(`${titulo} fue eliminada.`, 'success');
   } catch (error) {
@@ -852,6 +913,7 @@ window.eliminarFoto = async function (id) {
 export function renderGaleriaAdmin(fotos) {
   const grid = document.getElementById('galeria-admin-grid');
   if (!grid) return;
+  galeriaEnMemoria = Array.isArray(fotos) ? fotos : [];
 
   if (!fotos.length) {
     grid.innerHTML = '<p style="color:rgba(255,255,255,.3);font-size:.78rem">No hay fotos aun.</p>';
@@ -862,7 +924,7 @@ export function renderGaleriaAdmin(fotos) {
     .map(
       (foto) => `
         <div class="galeria-admin-item">
-          <img src="${foto.url}" alt="${escapeHtml(foto.titulo || '')}" loading="lazy"/>
+          <img src="${mediaUrl(foto.url || foto.media || foto)}" alt="${escapeHtml(foto.titulo || '')}" loading="lazy"/>
           <button class="del-foto" onclick="eliminarFoto('${foto.id}')">x</button>
           ${foto.titulo ? `<div class="g-item-label">${escapeHtml(foto.titulo)}</div>` : ''}
         </div>
@@ -1055,6 +1117,7 @@ renderPromosPublicGrid = function () {
   if (!grid) return;
 
   const state = realtimeState.promosPublic;
+  const marketing = typeof currentMarketingState === 'function' ? currentMarketingState() : {};
   if (state.loading) {
     grid.innerHTML = '';
     return;
@@ -1062,12 +1125,24 @@ renderPromosPublicGrid = function () {
 
   if (state.error) {
     console.warn('Promociones publicas:', state.error);
-    grid.innerHTML = '';
+    grid.innerHTML = `
+      <div class="empty-state-card">
+        <h3>${escapeHtml(marketing.emptyPromosTitle || 'No hay promociones activas hoy')}</h3>
+        <p>${escapeHtml(marketing.emptyPromosText || 'Escribenos por WhatsApp y te ayudamos a elegir el servicio ideal para esta semana.')}</p>
+        <button class="btn-primary" type="button" onclick="abrirOverlay('overlay-cita')">Agendar cita</button>
+      </div>
+    `;
     return;
   }
 
   if (!state.items.length) {
-    grid.innerHTML = '';
+    grid.innerHTML = `
+      <div class="empty-state-card">
+        <h3>${escapeHtml(marketing.emptyPromosTitle || 'No hay promociones activas hoy')}</h3>
+        <p>${escapeHtml(marketing.emptyPromosText || 'Escribenos por WhatsApp y te ayudamos a elegir el servicio ideal para esta semana.')}</p>
+        <button class="btn-primary" type="button" onclick="abrirOverlay('overlay-cita')">Agendar cita</button>
+      </div>
+    `;
     return;
   }
 
@@ -1147,6 +1222,7 @@ renderResenasPublicGrid = function () {
   if (!grid) return;
 
   const state = realtimeState.resenasPublic;
+  const marketing = typeof currentMarketingState === 'function' ? currentMarketingState() : {};
   if (state.loading) {
     grid.innerHTML = '';
     return;
@@ -1154,14 +1230,29 @@ renderResenasPublicGrid = function () {
 
   if (state.error) {
     console.warn('Resenas publicas:', state.error);
-    grid.innerHTML = '';
+    grid.innerHTML = `
+      <div class="empty-state-card light">
+        <h3>${escapeHtml(marketing.emptyResenasTitle || 'Tu resena puede ser la proxima')}</h3>
+        <p>${escapeHtml(marketing.emptyResenasText || 'Despues de tu cita puedes compartir tu experiencia y ayudar a otras clientas a elegir.')}</p>
+      </div>
+    `;
     return;
   }
 
   if (!state.items.length) {
-    grid.innerHTML = '';
+    window.dispatchEvent(new CustomEvent('dr-reviews-stats', { detail: { count: 200, rating: 4.9 } }));
+    grid.innerHTML = `
+      <div class="empty-state-card light">
+        <h3>${escapeHtml(marketing.emptyResenasTitle || 'Tu resena puede ser la proxima')}</h3>
+        <p>${escapeHtml(marketing.emptyResenasText || 'Despues de tu cita puedes compartir tu experiencia y ayudar a otras clientas a elegir.')}</p>
+      </div>
+    `;
     return;
   }
+
+  const total = state.items.length;
+  const average = state.items.reduce((sum, item) => sum + Number(item.estrellas || 5), 0) / total;
+  window.dispatchEvent(new CustomEvent('dr-reviews-stats', { detail: { count: total, rating: average } }));
 
   grid.innerHTML = state.items
     .slice(0, 6)
@@ -1693,6 +1784,7 @@ function renderMonitorPanel() {
   const monitorApi = window.__monitoring;
   const logs = monitorApi?.getLogs?.() || [];
   const health = monitorApi?.getHealth?.() || { status: 'idle', message: 'Sin comprobar', checkedAt: null };
+  const storage = health.storage || { provider: 'disabled', ready: false, publicBaseUrl: '' };
   const errorCount = logs.filter((item) => item.level === 'error').length;
   const latest = logs[0];
 
@@ -1712,6 +1804,12 @@ function renderMonitorPanel() {
       <div class="monitor-card-label">Latencia</div>
       <div class="monitor-card-value">${health.latencyMs ? `${health.latencyMs} ms` : '--'}</div>
       <div class="monitor-card-sub">Medicion en vivo del backend usado para citas y slots.</div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-card-label">Storage</div>
+      <div class="monitor-card-value">${escapeHtml(String(storage.provider || 'disabled')).toUpperCase()}</div>
+      <div class="monitor-card-sub">${storage.ready ? 'Listo para imagenes remotas.' : 'Sin configurar. El panel usa modo compatible actual.'}</div>
+      <div class="monitor-card-sub">${escapeHtml(storage.publicBaseUrl || '')}</div>
     </div>
   `;
 

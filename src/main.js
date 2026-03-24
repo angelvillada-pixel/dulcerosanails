@@ -3,6 +3,7 @@ import { db, collection, doc, getDoc, setDoc, addDoc, deleteDoc, onSnapshot, upd
 import { HORAS_DEFAULT, PRECIOS_DEFAULT, SERVICIO_KEYS, CATEGORIAS, fechaHoyColombia, formatCOP, comprimirImagen, to12h } from './data.js';
 import { renderGaleriaPublica, renderGaleriaSkeleton } from './galeria.js';
 import { renderGaleriaAdmin, cargarPromosPublicas, cargarResenasPublicas } from './admin.js';
+import { mediaUrl } from './media.js';
 
 // ── GLOBAL FUNCTIONS — defined immediately so HTML onclicks work ──
 function syncBodyOverflowFromOverlays() {
@@ -51,8 +52,12 @@ let adminAuthWatcherSet = false;
 let adminSessionUser = null;
 let confirmResolver = null;
 
-document.querySelectorAll('.site-logo').forEach(el => el.src = LOGO);
-setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=LOGO; },200);
+function resolveImageSource(value, fallback = '') {
+  return mediaUrl(value) || fallback;
+}
+
+document.querySelectorAll('.site-logo').forEach(el => el.src = resolveImageSource(LOGO, LOGO));
+setTimeout(() => { const p=document.getElementById('preview-logo-admin'); if(p) p.src=resolveImageSource(LOGO, LOGO); },200);
 
 const runtimeIssues = new Map();
 const MARKETING_DEFAULTS = Object.freeze({
@@ -79,11 +84,28 @@ const RENDER_HEALTH_URL = 'https://dulce-rosa-api.onrender.com/health';
 
 let marketingConfig = { ...MARKETING_DEFAULTS };
 window.__marketingState = marketingConfig;
+window.__trustStats = {
+  reviewCount: 200,
+  reviewRating: 4.9,
+  galleryCount: 0,
+};
 
 const seoState = {
   logo: LOGO,
   phone: '3245683032',
 };
+
+function renderTrustCounters() {
+  const counters = document.querySelectorAll('#testimonios div[style*="font-family"]');
+  const trust = window.__trustStats || {};
+  const reviewCountNode = document.getElementById('trust-counter-clientas') || counters[0];
+  const ratingNode = document.getElementById('trust-counter-rating') || counters[1];
+  const galleryNode = document.getElementById('trust-counter-fotos') || counters[2];
+
+  if (reviewCountNode) reviewCountNode.textContent = `${Math.max(200, Number(trust.reviewCount || 0))}+`;
+  if (ratingNode) ratingNode.textContent = `${Number(trust.reviewRating || 4.9).toFixed(1)}★`;
+  if (galleryNode) galleryNode.textContent = `${Number(trust.galleryCount || 0)}`;
+}
 
 const monitorState = {
   logs: [],
@@ -92,6 +114,7 @@ const monitorState = {
     latencyMs: null,
     checkedAt: null,
     message: 'Sin comprobar',
+    storage: null,
   },
 };
 const monitorDedupe = new Map();
@@ -257,6 +280,7 @@ async function probeRenderHealth({ silent = false } = {}) {
       latencyMs,
       checkedAt: new Date().toISOString(),
       message,
+      storage: payload?.storage || null,
     };
     publishMonitorHealth();
     return monitorState.health;
@@ -270,6 +294,7 @@ async function probeRenderHealth({ silent = false } = {}) {
       latencyMs: null,
       checkedAt: new Date().toISOString(),
       message,
+      storage: null,
     };
     publishMonitorHealth();
     if (!silent) recordMonitorEvent('backend', message, { source: 'render-health' }, 'error');
@@ -773,7 +798,7 @@ function renderServicios(serviciosData={}, preciosData={}) {
         ${svcs.map((s,si) => {
           const info = serviciosData[s.id] || {};
           const nombre  = info.nombre || s.nombre;
-          const imagen  = info.imagen || null;
+          const imagen  = resolveImageSource(info.imagen);
           const precio  = info.precio || preciosData[s.id] || PRECIOS_DEFAULT[s.id] || 0;
           const desc    = info.descripcion || s.descripcion || '';
           const detalles= info.detalles || s.detalles || '';
@@ -891,15 +916,17 @@ window.__monitoring = {
 window.__setFieldError = setFieldError;
 window.__clearFieldError = clearFieldError;
 
-if (cachedSiteConfig?.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=cachedSiteConfig.logo);
+if (cachedSiteConfig?.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=resolveImageSource(cachedSiteConfig.logo, LOGO));
 if (cachedSiteConfig?.nequi) document.querySelectorAll('.nequi-num').forEach(el=>el.textContent=cachedSiteConfig.nequi);
 if (Array.isArray(cachedSiteConfig?.horarios) && cachedSiteConfig.horarios.length) window._horasDisponibles = cachedSiteConfig.horarios;
-if (cachedSiteConfig?.logo) seoState.logo = cachedSiteConfig.logo;
+if (cachedSiteConfig?.logo) seoState.logo = resolveImageSource(cachedSiteConfig.logo, LOGO);
 if (cachedSiteConfig?.nequi) seoState.phone = cachedSiteConfig.nequi;
 
 preciosActuales = {...PRECIOS_DEFAULT, ...(cachedPrecios || {})};
 serviciosActuales = cachedServicios || {};
 applyMarketingConfig(cachedMarketing);
+window.__trustStats.galleryCount = Array.isArray(cachedGaleria) ? cachedGaleria.length : 0;
+renderTrustCounters();
 
 renderServicios(serviciosActuales, preciosActuales);
 actualizarSelectServicios();
@@ -916,9 +943,9 @@ onSnapshot(doc(db,'config','site'), snap => {
   if (!snap.exists()) return;
   const d = snap.data();
   writeSessionCache('site', d);
-  if (d.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=d.logo);
+  if (d.logo) document.querySelectorAll('.site-logo').forEach(el=>el.src=resolveImageSource(d.logo, LOGO));
   if (d.nequi) document.querySelectorAll('.nequi-num').forEach(el=>el.textContent=d.nequi);
-  if (d.logo) seoState.logo = d.logo;
+  if (d.logo) seoState.logo = resolveImageSource(d.logo, LOGO);
   if (d.nequi) seoState.phone = d.nequi;
   updateStructuredData();
   if (d.horarios) {
@@ -958,6 +985,8 @@ onSnapshot(doc(db,'config','servicios'), snap => {
 onSnapshot(collection(db,'galeria'), snap => {
   const fotos = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.orden||0)-(b.orden||0));
   writeSessionCache('galeria', fotos);
+  window.__trustStats.galleryCount = fotos.length;
+  renderTrustCounters();
   renderGaleriaPublica(fotos);
   renderGaleriaAdmin(fotos);
 }, error => {
@@ -1226,6 +1255,13 @@ window.addEventListener('unhandledrejection', (event) => {
   const message = reason?.message || String(reason || '');
   if (!message || message === '[object Object]') return;
   recordMonitorEvent('frontend', message, { source: 'unhandledrejection' }, 'error');
+});
+
+window.addEventListener('dr-reviews-stats', (event) => {
+  const detail = event?.detail || {};
+  window.__trustStats.reviewCount = Number(detail.count || window.__trustStats.reviewCount || 0);
+  window.__trustStats.reviewRating = Number(detail.rating || window.__trustStats.reviewRating || 4.9);
+  renderTrustCounters();
 });
 
 window.verificarCredenciales = async function() {

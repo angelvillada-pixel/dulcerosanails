@@ -1,0 +1,17 @@
+{
+  "name": "Dulce Rosa Nails Spa",
+  "short_name": "Dulce Rosa",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDF6F0",
+  "theme_color": "#9B3A5A",
+  "description": "Agenda tu cita, descubre promociones y conoce los trabajos de Dulce Rosa Nails Spa en Castilla, Medellin.",
+  "icons": [
+    {
+      "src": "/og-image.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
