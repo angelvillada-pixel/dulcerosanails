@@ -5,7 +5,7 @@ const DIRECT_LISTENER_BOOTSTRAP_MS = 2500;
 const RENDER_RETRY_ATTEMPTS = 3;
 const RENDER_RETRY_DELAY_MS = 5000;
 const RENDER_WAKE_TTL_MS = 10 * 60 * 1000;
-const DIRECT_FIRESTORE_ROOTS = new Set(['config', 'galeria']);
+const DIRECT_FIRESTORE_ROOTS = new Set(['config']);
 
 let renderWakePromise = null;
 let renderLastReadyAt = 0;

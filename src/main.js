@@ -107,6 +107,9 @@ function renderTrustCounters() {
   if (galleryNode) galleryNode.textContent = `${Number(trust.galleryCount || 0)}`;
 }
 
+window.renderTrustCounters = renderTrustCounters;
+window.renderGaleriaPublica = renderGaleriaPublica;
+
 const monitorState = {
   logs: [],
   health: {
@@ -531,6 +534,8 @@ function writeSessionCache(key, value) {
     sessionStorage.setItem(`dulce-rosa:${key}`, JSON.stringify(value));
   } catch {}
 }
+
+window.writeSessionCache = writeSessionCache;
 
 function ensureAppToastRoot() {
   let root = document.getElementById('app-toast-stack');

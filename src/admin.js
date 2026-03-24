@@ -122,22 +122,6 @@ window.ensureLegacyMirrorCurrentState = async function ({ silent = true } = {}) 
         await syncLegacyConfig(key, snap.data()).catch(() => {});
       }
     }
-
-    const gallerySnap = await getDocs(collection(db, 'galeria'));
-    for (const snap of gallerySnap.docs || []) {
-      const item = { id: snap.id, ...snap.data() };
-      if (!item?.url || item.legacyId) continue;
-      const legacyItem = await syncLegacyGalleryCreate({
-        url: item.url,
-        titulo: item.titulo || '',
-        orden: item.orden || Date.now(),
-        creado: item.creado || new Date().toISOString(),
-      }).catch(() => null);
-
-      if (legacyItem?.id) {
-        await updateDoc(doc(db, 'galeria', item.id), { legacyId: legacyItem.id }).catch(() => {});
-      }
-    }
   })()
     .catch((error) => {
       if (!silent) {
@@ -246,6 +230,34 @@ function showAdminToast(message, type = 'info') {
     return;
   }
   console[type === 'error' ? 'error' : 'log'](message);
+}
+
+function normalizeGaleriaItem(item = {}) {
+  return {
+    ...item,
+    id: String(item.id || ''),
+    url: mediaUrl(item.url || item.media || item),
+    titulo: String(item.titulo || ''),
+    orden: Number(item.orden || 0),
+    creado: item.creado || new Date().toISOString(),
+  };
+}
+
+function commitGaleriaState(items) {
+  galeriaEnMemoria = Array.isArray(items) ? items.map(normalizeGaleriaItem) : [];
+  galeriaEnMemoria.sort((a, b) => (a.orden || 0) - (b.orden || 0));
+  window.__trustStats = window.__trustStats || {};
+  window.__trustStats.galleryCount = galeriaEnMemoria.length;
+  if (typeof window.renderTrustCounters === 'function') {
+    window.renderTrustCounters();
+  }
+  if (typeof window.renderGaleriaPublica === 'function') {
+    window.renderGaleriaPublica(galeriaEnMemoria);
+  }
+  renderGaleriaAdmin(galeriaEnMemoria);
+  if (typeof window.writeSessionCache === 'function') {
+    window.writeSessionCache('galeria', galeriaEnMemoria);
+  }
 }
 
 function validarSeleccionImagen(file, scope = 'Imagen') {
@@ -1007,10 +1019,7 @@ window.guardarFoto = async function () {
       creado: serverTimestamp(),
     };
     const created = await addDoc(collection(db, 'galeria'), payload);
-    const legacyItem = await syncLegacyGalleryCreate(payload).catch(() => null);
-    if (legacyItem?.id && created?.id) {
-      await updateDoc(doc(db, 'galeria', created.id), { legacyId: legacyItem.id }).catch(() => {});
-    }
+    commitGaleriaState([...galeriaEnMemoria, { id: created?.id || `${Date.now()}`, ...payload }]);
     clearAdminError('galeria');
     cancelarFoto();
     showOk('ok-galeria');
@@ -1031,12 +1040,10 @@ window.eliminarFoto = async function (id) {
   try {
     const foto = galeriaEnMemoria.find((item) => item.id === id);
     await deleteDoc(doc(db, 'galeria', id));
-    if (foto?.legacyId) {
-      await syncLegacyGalleryDelete(foto.legacyId).catch(() => {});
-    }
     if (foto?.url) {
       await deleteAdminMedia(foto.url).catch(() => {});
     }
+    commitGaleriaState(galeriaEnMemoria.filter((item) => item.id !== id));
     clearAdminError('galeria');
     showAdminToast(`${titulo} fue eliminada.`, 'success');
   } catch (error) {
@@ -1048,7 +1055,7 @@ window.eliminarFoto = async function (id) {
 export function renderGaleriaAdmin(fotos) {
   const grid = document.getElementById('galeria-admin-grid');
   if (!grid) return;
-  galeriaEnMemoria = Array.isArray(fotos) ? fotos : [];
+  galeriaEnMemoria = Array.isArray(fotos) ? fotos.map(normalizeGaleriaItem) : [];
 
   if (!fotos.length) {
     grid.innerHTML = '<p style="color:rgba(255,255,255,.3);font-size:.78rem">No hay fotos aun.</p>';
