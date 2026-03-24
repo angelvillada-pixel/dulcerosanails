@@ -1278,11 +1278,14 @@ async function ensureResenasAdminListener() {
   renderAdminResenas();
   const watchdog = setTimeout(() => {
     if (!state.loading) return;
+    try {
+      state.unsubscribe?.();
+    } catch {}
+    state.unsubscribe = null;
     state.loading = false;
     state.error = null;
-    state.items = [];
     renderAdminResenas();
-  }, 4000);
+  }, 10000);
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -1324,11 +1327,14 @@ async function ensureResenasPublicListener() {
   renderResenasPublicGrid();
   const watchdog = setTimeout(() => {
     if (!state.loading) return;
+    try {
+      state.unsubscribe?.();
+    } catch {}
+    state.unsubscribe = null;
     state.loading = false;
     state.error = null;
-    state.items = [];
     renderResenasPublicGrid();
-  }, 4000);
+  }, 10000);
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -1495,12 +1501,9 @@ function renderAdminResenas() {
             <div class="cita-item-header">
               <div class="cita-name">${'★'.repeat(resena.estrellas || 5)} ${escapeHtml(resena.nombre || 'Cliente')}</div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                ${
-                  resena._localPending
-                    ? '<span class="cita-badge" style="background:rgba(201,162,106,.16);border-color:rgba(201,162,106,.35);color:#f3d8b4">Pendiente en este dispositivo</span>'
-                    : `<button type="button" class="btn-export" style="min-width:96px;${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="event.stopPropagation();aprobarResena('${resena.id}',${!resena.aprobada});return false;">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
-                       <button type="button" class="btn-delete" style="min-width:96px;padding-inline:14px" onclick="event.stopPropagation();eliminarResena('${resena.id}');return false;">Eliminar</button>`
-                }
+                ${resena._localPending ? '<span class="cita-badge" style="background:rgba(201,162,106,.16);border-color:rgba(201,162,106,.35);color:#f3d8b4">Pendiente en este dispositivo</span>' : ''}
+                <button type="button" class="btn-export" style="min-width:96px;${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="event.stopPropagation();aprobarResena('${resena.id}',${!resena.aprobada});return false;">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
+                <button type="button" class="btn-delete" style="min-width:96px;padding-inline:14px" onclick="event.stopPropagation();eliminarResena('${resena.id}');return false;">Eliminar</button>
               </div>
             </div>
             <div class="cita-details">
