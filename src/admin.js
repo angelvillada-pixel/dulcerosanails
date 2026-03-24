@@ -1498,8 +1498,8 @@ function renderAdminResenas() {
                 ${
                   resena._localPending
                     ? '<span class="cita-badge" style="background:rgba(201,162,106,.16);border-color:rgba(201,162,106,.35);color:#f3d8b4">Pendiente en este dispositivo</span>'
-                    : `<button class="btn-export" style="${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="aprobarResena('${resena.id}',${!resena.aprobada})">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
-                       <button class="btn-delete" onclick="eliminarResena('${resena.id}')">x</button>`
+                    : `<button type="button" class="btn-export" style="min-width:96px;${resena.aprobada ? 'background:rgba(76,175,80,.2);color:#4CAF50' : ''}" onclick="event.stopPropagation();aprobarResena('${resena.id}',${!resena.aprobada});return false;">${resena.aprobada ? 'Publicada' : 'Aprobar'}</button>
+                       <button type="button" class="btn-delete" style="min-width:96px;padding-inline:14px" onclick="event.stopPropagation();eliminarResena('${resena.id}');return false;">Eliminar</button>`
                 }
               </div>
             </div>
