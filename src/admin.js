@@ -1675,20 +1675,33 @@ window.__enviarResenaCanon = async function (e) {
   if (ok) ok.style.display = 'none';
 
   try {
-    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase');
-    await withRealtimeTimeout(
-      fb.addDoc(fb.collection(rdb, RESENAS_COLLECTION), {
-        nombre,
-        estrellas,
-        servicio,
-        comentario,
-        aprobada: false,
-        creado: fb.serverTimestamp(),
-        creadoMs: Date.now(),
+    const { db: rdb, fb } = await withRealtimeTimeout(realFB(), 'Firebase', 8000);
+    const docRef = fb.doc(fb.collection(rdb, RESENAS_COLLECTION));
+    const payload = {
+      nombre,
+      estrellas,
+      servicio,
+      comentario,
+      aprobada: false,
+      creado: new Date().toISOString(),
+      creadoMs: Date.now(),
+    };
+
+    const writePromise = fb.setDoc(docRef, payload);
+    const sendState = await Promise.race([
+      writePromise.then(() => 'confirmed'),
+      new Promise((resolve) => {
+        setTimeout(() => resolve('queued'), 1200);
       }),
-      'Enviar resena',
-      12000,
-    );
+    ]);
+
+    if (sendState === 'queued') {
+      void writePromise.catch((error) => {
+        const message = formatError(error, 'No se pudo confirmar la resena.');
+        realtimeState.resenasPublic.error = message;
+        showAdminToast(message, 'error');
+      });
+    }
 
     realtimeState.resenasAdmin.error = null;
     realtimeState.resenasPublic.error = null;
