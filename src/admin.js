@@ -249,6 +249,10 @@ function removePendingReview(id) {
   writePendingReviews(next);
 }
 
+function findPendingReview(id) {
+  return getPendingReviews().find((item) => item.id === String(id)) || null;
+}
+
 function reconcilePendingReviews(items = []) {
   if (!items.length) return;
   const seenIds = new Set(items.map((item) => String(item.id || '')));
@@ -1755,6 +1759,219 @@ window.enviarResena = async function (e) {
   }
 };
 
+// True EOF canonical review handlers. Legacy duplicates exist above; the browser must keep these
+// last assignments so pending local reviews can be approved or deleted correctly.
+window.aprobarResena = async function (id, estado) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'la resena';
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.updateDoc(fb.doc(rdb, RESENAS_COLLECTION, id), {
+      aprobada: estado,
+      actualizadoMs: Date.now(),
+    });
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(
+      estado ? `Resena de ${nombre} publicada.` : `Resena de ${nombre} devuelta a pendiente.`,
+      'success',
+    );
+  } catch (error) {
+    const message = formatError(error, 'No se pudo actualizar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.eliminarResena = async function (id) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'esta resena';
+
+  if (pendingLocal) {
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+
+    try {
+      const { db: rdb, fb } = await realFB();
+      await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    } catch (error) {
+      if (!/not-found/i.test(String(error?.message || ''))) {
+        showAdminToast('Se elimino de este dispositivo, pero no se pudo confirmar el borrado en Firestore.', 'info');
+        return;
+      }
+    }
+
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+    return;
+  }
+
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar la resena de ${nombre}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar la resena de ${nombre}?`)));
+  if (!accepted) return;
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.enviarResena = window.__enviarResenaCanon;
+
+// Final canonical review action overrides. Keep these at true EOF because legacy duplicates above
+// redefine the same globals multiple times.
+window.aprobarResena = async function (id, estado) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'la resena';
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.updateDoc(fb.doc(rdb, RESENAS_COLLECTION, id), {
+      aprobada: estado,
+      actualizadoMs: Date.now(),
+    });
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(
+      estado ? `Resena de ${nombre} publicada.` : `Resena de ${nombre} devuelta a pendiente.`,
+      'success',
+    );
+  } catch (error) {
+    const message = formatError(error, 'No se pudo actualizar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.eliminarResena = async function (id) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'esta resena';
+
+  if (pendingLocal) {
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+
+    try {
+      const { db: rdb, fb } = await realFB();
+      await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    } catch (error) {
+      if (!/not-found/i.test(String(error?.message || ''))) {
+        showAdminToast('Se elimino de este dispositivo, pero no se pudo confirmar el borrado en Firestore.', 'info');
+        return;
+      }
+    }
+
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+    return;
+  }
+
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar la resena de ${nombre}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar la resena de ${nombre}?`)));
+  if (!accepted) return;
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+// Canonical overrides kept at EOF so duplicate legacy definitions above cannot take precedence.
+window.aprobarResena = async function (id, estado) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'la resena';
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.updateDoc(fb.doc(rdb, RESENAS_COLLECTION, id), {
+      aprobada: estado,
+      actualizadoMs: Date.now(),
+    });
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(
+      estado ? `Resena de ${nombre} publicada.` : `Resena de ${nombre} devuelta a pendiente.`,
+      'success',
+    );
+  } catch (error) {
+    const message = formatError(error, 'No se pudo actualizar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.eliminarResena = async function (id) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'esta resena';
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar la resena de ${nombre}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar la resena de ${nombre}?`)));
+  if (!accepted) return;
+
+  if (pendingLocal) {
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+
+    try {
+      const { db: rdb, fb } = await realFB();
+      await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    } catch (error) {
+      if (!/not-found/i.test(String(error?.message || ''))) {
+        showAdminToast('Se elimino de este dispositivo, pero no se pudo confirmar el borrado en Firestore.', 'info');
+        return;
+      }
+    }
+
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+    return;
+  }
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
 window.__enviarResenaCanon = async function (e) {
   e.preventDefault();
 
@@ -2802,3 +3019,76 @@ window.enviarResena = async function (e) {
     restoreButton();
   }
 };
+
+// True EOF canonical review handlers. Older copies above still exist for legacy reasons, so the
+// browser must end on these assignments.
+window.aprobarResena = async function (id, estado) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'la resena';
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.updateDoc(fb.doc(rdb, RESENAS_COLLECTION, id), {
+      aprobada: estado,
+      actualizadoMs: Date.now(),
+    });
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(
+      estado ? `Resena de ${nombre} publicada.` : `Resena de ${nombre} devuelta a pendiente.`,
+      'success',
+    );
+  } catch (error) {
+    const message = formatError(error, 'No se pudo actualizar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.eliminarResena = async function (id) {
+  const pendingLocal = findPendingReview(id);
+  const nombre = realtimeState.resenasAdmin.items.find((item) => item.id === id)?.nombre || pendingLocal?.nombre || 'esta resena';
+
+  if (pendingLocal) {
+    removePendingReview(id);
+    renderAdminResenas();
+    renderResenasPublicGrid();
+
+    try {
+      const { db: rdb, fb } = await realFB();
+      await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    } catch (error) {
+      if (!/not-found/i.test(String(error?.message || ''))) {
+        showAdminToast('Se elimino de este dispositivo, pero no se pudo confirmar el borrado en Firestore.', 'info');
+        return;
+      }
+    }
+
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+    return;
+  }
+
+  const accepted = await (window.confirmAction
+    ? window.confirmAction(`Eliminar la resena de ${nombre}?`, 'Eliminar')
+    : Promise.resolve(confirm(`Eliminar la resena de ${nombre}?`)));
+  if (!accepted) return;
+
+  try {
+    const { db: rdb, fb } = await realFB();
+    await fb.deleteDoc(fb.doc(rdb, RESENAS_COLLECTION, id));
+    showAdminToast(`Resena de ${nombre} eliminada.`, 'success');
+  } catch (error) {
+    const message = formatError(error, 'No se pudo eliminar la resena.');
+    realtimeState.resenasAdmin.error = message;
+    realtimeState.resenasPublic.error = message;
+    renderAdminResenas();
+    renderResenasPublicGrid();
+    showAdminToast(message, 'error');
+  }
+};
+
+window.enviarResena = window.__enviarResenaCanon;
