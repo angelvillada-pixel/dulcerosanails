@@ -940,6 +940,13 @@ async function ensurePromosAdminListener() {
   state.loading = true;
   state.error = null;
   renderAdminPromociones();
+  const watchdog = setTimeout(() => {
+    if (!state.loading) return;
+    state.loading = false;
+    state.error = null;
+    state.items = [];
+    renderAdminPromociones();
+  }, 4000);
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -949,12 +956,14 @@ async function ensurePromosAdminListener() {
     state.unsubscribe = fb.onSnapshot(
       q,
       (snapshot) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.error = null;
         state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
         renderAdminPromociones();
       },
       (error) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.unsubscribe = null;
         state.error = formatError(error);
@@ -962,6 +971,7 @@ async function ensurePromosAdminListener() {
       },
     );
   } catch (error) {
+    clearTimeout(watchdog);
     state.loading = false;
     state.error = formatError(error);
     renderAdminPromociones();
@@ -975,6 +985,13 @@ async function ensurePromosPublicListener() {
   state.loading = true;
   state.error = null;
   renderPromosPublicGrid();
+  const watchdog = setTimeout(() => {
+    if (!state.loading) return;
+    state.loading = false;
+    state.error = null;
+    state.items = [];
+    renderPromosPublicGrid();
+  }, 4000);
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -984,12 +1001,14 @@ async function ensurePromosPublicListener() {
     state.unsubscribe = fb.onSnapshot(
       q,
       (snapshot) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.error = null;
         state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
         renderPromosPublicGrid();
       },
       (error) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.unsubscribe = null;
         state.error = formatError(error);
@@ -997,6 +1016,7 @@ async function ensurePromosPublicListener() {
       },
     );
   } catch (error) {
+    clearTimeout(watchdog);
     state.loading = false;
     state.error = formatError(error);
     renderPromosPublicGrid();
@@ -1010,6 +1030,13 @@ async function ensureResenasAdminListener() {
   state.loading = true;
   state.error = null;
   renderAdminResenas();
+  const watchdog = setTimeout(() => {
+    if (!state.loading) return;
+    state.loading = false;
+    state.error = null;
+    state.items = [];
+    renderAdminResenas();
+  }, 4000);
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -1019,12 +1046,14 @@ async function ensureResenasAdminListener() {
     state.unsubscribe = fb.onSnapshot(
       q,
       (snapshot) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.error = null;
         state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
         renderAdminResenas();
       },
       (error) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.unsubscribe = null;
         state.error = formatError(error);
@@ -1032,6 +1061,7 @@ async function ensureResenasAdminListener() {
       },
     );
   } catch (error) {
+    clearTimeout(watchdog);
     state.loading = false;
     state.error = formatError(error);
     renderAdminResenas();
@@ -1045,6 +1075,13 @@ async function ensureResenasPublicListener() {
   state.loading = true;
   state.error = null;
   renderResenasPublicGrid();
+  const watchdog = setTimeout(() => {
+    if (!state.loading) return;
+    state.loading = false;
+    state.error = null;
+    state.items = [];
+    renderResenasPublicGrid();
+  }, 4000);
 
   try {
     const { db: rdb, fb } = await realFB();
@@ -1054,12 +1091,14 @@ async function ensureResenasPublicListener() {
     state.unsubscribe = fb.onSnapshot(
       q,
       (snapshot) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.error = null;
         state.items = sortByCreatedDesc(snapshot.docs.map(normalizeDoc));
         renderResenasPublicGrid();
       },
       (error) => {
+        clearTimeout(watchdog);
         state.loading = false;
         state.unsubscribe = null;
         state.error = formatError(error);
@@ -1067,6 +1106,7 @@ async function ensureResenasPublicListener() {
       },
     );
   } catch (error) {
+    clearTimeout(watchdog);
     state.loading = false;
     state.error = formatError(error);
     renderResenasPublicGrid();
