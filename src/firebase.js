@@ -1,11 +1,11 @@
 const API = 'https://dulce-rosa-api.onrender.com';
 const API_TIMEOUT_MS = 10000;
 const DIRECT_FIRESTORE_TIMEOUT_MS = 10000;
-const DIRECT_LISTENER_BOOTSTRAP_MS = 2500;
+const DIRECT_LISTENER_BOOTSTRAP_MS = 8000;
 const RENDER_RETRY_ATTEMPTS = 3;
 const RENDER_RETRY_DELAY_MS = 5000;
 const RENDER_WAKE_TTL_MS = 10 * 60 * 1000;
-const DIRECT_FIRESTORE_ROOTS = new Set(['config']);
+const DIRECT_FIRESTORE_ROOTS = new Set(['config', 'galeria', 'slots', 'promociones', 'resenas']);
 
 let renderWakePromise = null;
 let renderLastReadyAt = 0;
@@ -54,6 +54,10 @@ function rootOf(ref) {
 
 function shouldUseDirectFirestore(ref) {
   return DIRECT_FIRESTORE_ROOTS.has(rootOf(ref));
+}
+
+function shouldUseRenderFallback(ref) {
+  return !DIRECT_FIRESTORE_ROOTS.has(rootOf(ref));
 }
 
 function withTimeout(promise, label, timeoutMs = DIRECT_FIRESTORE_TIMEOUT_MS) {
@@ -257,9 +261,48 @@ async function tryDirectFirestore(ref, operation, fallback) {
       `Firebase directo en ${ref.path}`,
     );
   } catch (error) {
+    if (!shouldUseRenderFallback(ref)) throw error;
     logFallback(`Firebase directo fallo para ${ref.path}. Se usa fallback.`, error);
     return fallback(error);
   }
+}
+
+function startDirectRealtime(ref, callback, onError = () => {}) {
+  let active = true;
+  let unsubDirect = null;
+  let lastSignature = null;
+
+  const emitSnapshot = (snapshot) => {
+    if (!active || !snapshot) return false;
+    const nextSignature = snapshotSignature(ref, snapshot);
+    if (nextSignature === lastSignature) return false;
+    lastSignature = nextSignature;
+    callback(snapshot);
+    return true;
+  };
+
+  (async () => {
+    try {
+      const { db: dbInstance, fb } = await getRealFirebase();
+      if (!active) return;
+      const realRef = toRealRef(ref, dbInstance, fb);
+      unsubDirect = fb.onSnapshot(realRef, emitSnapshot, onError);
+
+      try {
+        const snapshot = ref._ref === 'doc' ? await fb.getDoc(realRef) : await fb.getDocs(realRef);
+        emitSnapshot(snapshot);
+      } catch (error) {
+        if (active) onError(error);
+      }
+    } catch (error) {
+      if (active) onError(error);
+    }
+  })();
+
+  return () => {
+    active = false;
+    if (unsubDirect) unsubDirect();
+  };
 }
 
 export async function getDoc(ref) {
@@ -368,6 +411,7 @@ function snapshotHasContent(ref, snapshot) {
 
 export function onSnapshot(ref, callback, onError = () => {}) {
   if (!shouldUseDirectFirestore(ref)) return startRenderPolling(ref, callback, onError);
+  if (!shouldUseRenderFallback(ref)) return startDirectRealtime(ref, callback, onError);
 
   let unsubDirect = null;
   let unsubFallback = null;
