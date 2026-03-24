@@ -160,6 +160,18 @@ function formatRenderIssue(scope, error) {
   return `${scope}: ${detail}`;
 }
 
+function isFirestoreOfflineError(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+
+  return (
+    code === 'unavailable' ||
+    code === 'failed-precondition' ||
+    message.includes('client is offline') ||
+    message.includes('offline')
+  );
+}
+
 function readLocalJson(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -961,6 +973,7 @@ onSnapshot(doc(db,'config','site'), snap => {
     if (fecha) window.cargarSlots();
   }
 }, error => {
+  if (isFirestoreOfflineError(error)) return;
   recordMonitorEvent('frontend', formatRenderIssue('Configuracion', error), { source: 'config-site' }, 'warn');
   console.warn('Configuracion:', error);
 });
@@ -973,6 +986,7 @@ onSnapshot(doc(db,'config','precios'), snap => {
   actualizarSelectServicios();
   updateTodayAvailabilityChip([]);
 }, error => {
+  if (isFirestoreOfflineError(error)) return;
   recordMonitorEvent('frontend', formatRenderIssue('Precios', error), { source: 'config-precios' }, 'warn');
   console.warn('Precios:', error);
 });
@@ -984,6 +998,7 @@ onSnapshot(doc(db,'config','servicios'), snap => {
   renderServicios(serviciosActuales, preciosActuales);
   actualizarSelectServicios();
 }, error => {
+  if (isFirestoreOfflineError(error)) return;
   recordMonitorEvent('frontend', formatRenderIssue('Servicios', error), { source: 'config-servicios' }, 'warn');
   console.warn('Servicios:', error);
 });
@@ -1005,6 +1020,7 @@ onSnapshot(doc(db,'config','marketing'), snap => {
   writeSessionCache('marketing', nextMarketing);
   applyMarketingConfig(nextMarketing);
 }, error => {
+  if (isFirestoreOfflineError(error)) return;
   recordMonitorEvent('frontend', formatRenderIssue('Marketing', error), { source: 'config-marketing' }, 'warn');
   console.warn('Marketing:', error);
 });

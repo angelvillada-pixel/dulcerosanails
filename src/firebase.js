@@ -79,6 +79,18 @@ function withTimeout(promise, label, timeoutMs = DIRECT_FIRESTORE_TIMEOUT_MS) {
   });
 }
 
+function isOfflineFirestoreError(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+
+  return (
+    code === 'unavailable' ||
+    code === 'failed-precondition' ||
+    message.includes('client is offline') ||
+    message.includes('offline')
+  );
+}
+
 async function getRealFirebase() {
   if (realFirebasePromise) return realFirebasePromise;
 
@@ -292,7 +304,9 @@ function startDirectRealtime(ref, callback, onError = () => {}) {
         const snapshot = ref._ref === 'doc' ? await fb.getDoc(realRef) : await fb.getDocs(realRef);
         emitSnapshot(snapshot);
       } catch (error) {
-        if (active) onError(error);
+        if (!active) return;
+        if (isOfflineFirestoreError(error)) return;
+        onError(error);
       }
     } catch (error) {
       if (active) onError(error);
