@@ -38,6 +38,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function shouldLogFallback() {
+  const host = window?.location?.hostname || '';
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
+function logFallback(message, error) {
+  if (!shouldLogFallback()) return;
+  console.warn(message, error);
+}
+
 function rootOf(ref) {
   return ref.path.split('/')[0];
 }
@@ -247,7 +257,7 @@ async function tryDirectFirestore(ref, operation, fallback) {
       `Firebase directo en ${ref.path}`,
     );
   } catch (error) {
-    console.warn(`Firebase directo fallo para ${ref.path}. Se usa fallback.`, error);
+    logFallback(`Firebase directo fallo para ${ref.path}. Se usa fallback.`, error);
     return fallback(error);
   }
 }
@@ -430,7 +440,7 @@ export function onSnapshot(ref, callback, onError = () => {}) {
           }
         },
         (error) => {
-          console.warn(`Firebase directo escuchando ${ref.path} fallo. Se usa fallback.`, error);
+          logFallback(`Firebase directo escuchando ${ref.path} fallo. Se usa fallback.`, error);
           onError(error);
           if (unsubDirect) {
             unsubDirect();
@@ -441,7 +451,7 @@ export function onSnapshot(ref, callback, onError = () => {}) {
       );
       bootstrapSnapshot();
     } catch (error) {
-      console.warn(`Firebase directo no disponible para ${ref.path}. Se usa fallback.`, error);
+      logFallback(`Firebase directo no disponible para ${ref.path}. Se usa fallback.`, error);
       onError(error);
       startFallback();
     }
